@@ -10,6 +10,13 @@
 // API
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 
+// NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
+// Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
+const char* TIME_ZONE = "BRT3";
+const char* NTP_SERVER_PRIMARY = "a.ntp.br";
+const char* NTP_SERVER_SECONDARY = "b.ntp.br";
+const char* NTP_SERVER_TERTIARY = "c.ntp.br";
+
 // WiFi
 const char* ssid = "iPhone";
 const char* password = "oiboanoite";
@@ -17,6 +24,8 @@ const char* password = "oiboanoite";
 // Configuracoes
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 10000;
+const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
+const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
 
 const int NUM_AMOSTRAS = 10;
 const unsigned long TEMPO_ENTRE_AMOSTRAS = 500;
@@ -96,6 +105,8 @@ int enviarPostComRetry(const String& payload) {
     client.setInsecure();
 
     HTTPClient http;
+    http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
+    http.setTimeout(HTTP_TIMEOUT_MS);
 
     if (!http.begin(client, serverUrl)) {
       Serial.println("[HTTP] ERRO ao iniciar conexao HTTPS!");
@@ -216,8 +227,8 @@ void setup() {
 
   connectWiFi();
 
-  Serial.println("\n[SETUP] Sincronizando horario via NTP...");
-  configTime(-3 * 3600, 0, "pool.ntp.org");
+  Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
+  configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
 
   time_t nowSec = time(nullptr);
   int attempts = 0;
@@ -229,7 +240,7 @@ void setup() {
   }
 
   if (nowSec >= 1000000000) {
-    Serial.print("[SETUP] Horario sincronizado: ");
+    Serial.print("[SETUP] Horario de Brasilia sincronizado: ");
     Serial.println(getTimestamp());
   } else {
     Serial.println("[SETUP] Falha ao sincronizar horario.");

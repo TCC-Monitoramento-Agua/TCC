@@ -1,6 +1,7 @@
 const API_URL = "https://api-monitoramento-agua.onrender.com/leituras";
 
-const INTERVALO_ATUALIZACAO = 5000; // 5 segundos
+const INTERVALO_ATUALIZACAO = 15000; // 15 segundos após concluir a consulta
+const TEMPO_LIMITE_REQUISICAO = 60000; // Até 60 segundos para receber os dados
 
 let historico = [];
 let ultimoIdProcessado = null;
@@ -13,6 +14,12 @@ BUSCA OS DADOS DA API
 ====================================================
 */
 async function buscarDadosDaApi() {
+    const controlador = new AbortController();
+    const timeout = setTimeout(
+        () => controlador.abort(),
+        TEMPO_LIMITE_REQUISICAO
+    );
+
     try {
         if(primeiraConexao) {
             alterarStatusConexao("Conectando...", "conectando");
@@ -23,7 +30,8 @@ async function buscarDadosDaApi() {
             headers: {
                 "Accept": "application/json"
             },
-            cache: "no-store"
+            cache: "no-store",
+            signal: controlador.signal
         });
 
         if (!resposta.ok) {
@@ -125,7 +133,13 @@ async function buscarDadosDaApi() {
         document.getElementById(
             "mensagemErro"
         ).textContent =
-            `Erro: ${erro.message}`;
+            erro.name === "AbortError"
+                ? "A API demorou mais de 60 segundos para responder. Uma nova tentativa será feita em 15 segundos."
+                : `Erro: ${erro.message}`;
+    } finally {
+        clearTimeout(timeout);
+        // Aguarda a consulta terminar para evitar requisições simultâneas.
+        setTimeout(buscarDadosDaApi, INTERVALO_ATUALIZACAO);
     }
 }
 
@@ -370,9 +384,3 @@ INICIALIZAÇÃO
 
 // Faz uma requisição imediatamente
 buscarDadosDaApi();
-
-// Depois atualiza a cada 2 segundos
-setInterval(
-    buscarDadosDaApi,
-    INTERVALO_ATUALIZACAO
-);

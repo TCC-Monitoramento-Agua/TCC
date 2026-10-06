@@ -15,6 +15,13 @@
 // Endpoint (HTTPS com WiFiClientSecure)
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 
+// NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
+// Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
+const char* TIME_ZONE = "BRT3";
+const char* NTP_SERVER_PRIMARY = "a.ntp.br";
+const char* NTP_SERVER_SECONDARY = "b.ntp.br";
+const char* NTP_SERVER_TERTIARY = "c.ntp.br";
+
 // WiFi
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -25,6 +32,8 @@ DallasTemperature sensors(&oneWire);
 
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 10000;
+const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
+const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
 
 const int NUM_AMOSTRAS = 10;
 const unsigned long TEMPO_ENTRE_AMOSTRAS = 500; // 500 ms entre amostras
@@ -151,6 +160,8 @@ Serial.println(maxAttempts);
 WiFiClientSecure client;
 client.setInsecure();
 HTTPClient http;
+http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
+http.setTimeout(HTTP_TIMEOUT_MS);
 
 Serial.println("[HTTP] Iniciando conexao HTTPS...");
 if (!http.begin(client, serverUrl)) {
@@ -281,8 +292,8 @@ Serial.println("[SETUP] Sensores inicializados.\n");
 Serial.println("[SETUP] Conectando ao Wi-Fi...");
 connectWiFi();
 
-Serial.println("\n[SETUP] Sincronizando horario via NTP...");
-configTime(-3 * 3600, 0, "pool.ntp.org");
+Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
+configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
 time_t nowSec = time(nullptr);
 int attempts = 0;
 while (nowSec < 1000000000 && attempts < 20) {
@@ -291,7 +302,11 @@ nowSec = time(nullptr);
 attempts++;
 }
 
-Serial.println("[SETUP] Horario inicializado: " + getTimestamp());
+if (nowSec >= 1000000000) {
+Serial.println("[SETUP] Horario de Brasilia sincronizado: " + getTimestamp());
+} else {
+Serial.println("[SETUP] Falha ao sincronizar horario via NTP.br.");
+}
 Serial.println("[SETUP] Setup completo! Iniciando loop...\n");
 }
 
