@@ -371,10 +371,9 @@ function formatarData(data) {
         return "--";
     }
 
-    return dataObj.toLocaleString(
-        "pt-BR",
-        { timeZone: "America/Sao_Paulo" }
-    );
+    // Usa automaticamente o fuso configurado no dispositivo do visitante.
+    // O offset enviado pela API identifica o instante da leitura.
+    return dataObj.toLocaleString("pt-BR");
 }
 
 /*
