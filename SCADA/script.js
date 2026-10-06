@@ -4,7 +4,6 @@ const INTERVALO_ATUALIZACAO = 15000; // 15 segundos após concluir a consulta
 const TEMPO_LIMITE_REQUISICAO = 60000; // Até 60 segundos para receber os dados
 
 let historico = [];
-let ultimoIdProcessado = null;
 let primeiraConexao = true;
 
 
@@ -50,53 +49,35 @@ async function buscarDadosDaApi() {
             );
         }
 
-        if (!dados.leituras || dados.leituras.length === 0) {
-            throw new Error(
-                "A API não retornou nenhuma leitura."
-            );
+        if (!Array.isArray(dados.leituras)) {
+            throw new Error("A API retornou uma lista de leituras inválida.");
         }
 
-        /*
-        A API retorna:
-        {
-            "leituras": [
-                {...},
-                {...},
-                {...}
-            ]
-        }
-        Como a API usa:
-        ORDER BY id DESC
-        a posição [0] é a leitura mais recente.
-        */
-        const leituraAPI = dados.leituras[0];
-
-        console.log(
-            "Leitura mais recente:",
-            leituraAPI
-        );
-
-        /*
-        Converte os valores recebidos para Number.
-        */
-
-        const leitura = {
+        // A API entrega as últimas leituras por ID decrescente.
+        // Substitui o histórico completo para refletir também limpezas do banco.
+        historico = dados.leituras.slice(0, 10).map((leituraAPI) => ({
             id: leituraAPI.id,
             equipamento_id: leituraAPI.equipamento_id,
             ph: Number(leituraAPI.ph),
             temperatura: Number(leituraAPI.temperatura),
-            orp: Number(leituraAPI.orp),
+            orp: leituraAPI.orp == null ? null : Number(leituraAPI.orp),
             turbidez: Number(leituraAPI.turbidez),
             created_at: leituraAPI.data_hora
-        };
+        }));
+        atualizarTabelaHistorico();
 
+        if (historico.length === 0) {
+            limparLeituras();
+            alterarStatusConexao("Online", "online");
+            primeiraConexao = false;
+            document.getElementById("statusLeitura").textContent =
+                "Nenhuma leitura disponível no banco.";
+            return;
+        }
+
+        const leitura = historico[0];
         atualizarCards(leitura);
         verificarAlarmes(leitura);
-
-        if (leitura.id !== ultimoIdProcessado) {
-            adicionarNoHistorico(leitura);
-            ultimoIdProcessado = leitura.id;
-        }
 
         console.log(
             "Leitura processada:",
@@ -170,7 +151,7 @@ function atualizarCards(dados) {
     document.getElementById(
         "valorOrp"
     ).textContent =
-        `${dados.orp.toFixed(0)} mV`;
+        dados.orp == null ? "--" : `${dados.orp.toFixed(0)} mV`;
 
     document.getElementById(
         "valorTurbidez"
@@ -223,7 +204,7 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (dados.orp < 250) {
+    if (dados.orp != null && dados.orp < 250) {
         mensagens.push(
             "ORP baixo. Possível baixa capacidade de oxidação."
         );
@@ -257,19 +238,14 @@ function verificarAlarmes(dados) {
 HISTÓRICO
 ====================================================
 */
-function adicionarNoHistorico(dados) {
-    historico.unshift(dados);
-
-    /*
-    Mantém somente as últimas
-    10 leituras.
-    */
-
-    if (historico.length > 10) {
-        historico.pop();
+function limparLeituras() {
+    for (const id of ["equipamentoLeitura", "valorPh", "valorTemperatura", "valorOrp",
+                      "valorTurbidez", "dataLeitura"]) {
+        document.getElementById(id).textContent = "--";
     }
-
-    atualizarTabelaHistorico();
+    const alerta = document.getElementById("alertaSistema");
+    alerta.textContent = "";
+    alerta.classList.add("oculto");
 }
 
 /*
@@ -310,7 +286,7 @@ function atualizarTabelaHistorico() {
                 </td>
 
                 <td>
-                    ${item.orp.toFixed(0)} mV
+                    ${item.orp == null ? "--" : `${item.orp.toFixed(0)} mV`}
                 </td>
 
                 <td>
