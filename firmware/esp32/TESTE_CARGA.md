@@ -1,41 +1,54 @@
-# Vários equipamentos no Wokwi do VS Code
+# Simulações Wokwi simultâneas no VS Code
+
+## Começar com duas e aumentar o grupo
+
+Na raiz do repositório, no terminal onde `pio` e `code` estão disponíveis:
+
+```bash
+python firmware/esp32/preparar_wokwi.py --quantidade 2 --compilar --abrir
+```
+
+O script cria ou reaproveita `esp32-001` e `esp32-002`, atribui IDs e MACs diferentes automaticamente, compila cada firmware e abre cada projeto em uma janela própria do VS Code. Em cada janela, use `Wokwi: Start Simulator` e mantenha a aba do simulador visível. A extensão continua responsável por iniciar a simulação; o script não inicia nem sincroniza o Wokwi automaticamente.
+
+Quando duas funcionarem, aumente o total:
+
+```bash
+python firmware/esp32/preparar_wokwi.py --quantidade 4 --compilar --abrir
+python firmware/esp32/preparar_wokwi.py --quantidade 8 --compilar --abrir
+python firmware/esp32/preparar_wokwi.py --quantidade 16 --compilar --abrir
+```
+
+Execute um comando por etapa. `--quantidade 4` significa quatro no total: preserva 001/002 e cria 003/004. `--abrir` abre somente as novas janelas quando há novas instâncias; se nenhuma for nova, abre o grupo solicitado. Para abrir todas explicitamente, use `--abrir-todas`. Não execute os comandos de etapas seguintes até avaliar a atual. A compilação usa o cache incremental de cada projeto; se alguma falhar, o script não abre janelas.
+
+Também pode adicionar duas às existentes:
+
+```bash
+python firmware/esp32/preparar_wokwi.py --adicionar 2 --compilar --abrir
+```
+
+O limite do gerador é 32. `--adicionar` conta a partir do maior número de instância existente; lacunas anteriores são preenchidas. Solicitar um total menor não apaga projetos, não fecha janelas e não para simulações: pare as extras manualmente para testar exatamente aquela quantidade. Execute uma geração de cada vez.
+
+## Instâncias antigas e alterações locais
+
+As instâncias antigas são reaproveitadas. Seu `src/main.cpp`, configuração de build e ajustes dos sensores são preservados. O script corrige automaticamente apenas o MAC da placa no `diagram.json`, salvando o original como `diagram.json.bak` (ou um backup numerado se necessário). Pare as simulações antes da primeira execução com esta versão e reinicie as antigas após a correção do MAC; a mudança do circuito não exige recompilar, mas o comando com `--compilar` verifica o firmware.
+
+Novas instâncias copiam o firmware e circuito base atuais. Alterações posteriores em `src/main.cpp` da pasta base não substituem automaticamente firmware de instâncias já existentes. Edite as cópias desejadas ou use `--saida` para preparar um grupo novo. IDs e MACs recomeçam por grupo: não rode dois grupos com os mesmos identificadores no mesmo teste.
+
+## Ferramentas e API
+
+Sem `pio` no PATH, use o terminal do PlatformIO. Sem `code` no PATH, configure o comando do VS Code ou omita `--abrir` e abra as pastas manualmente. É possível executar só `--quantidade 2` para preparar os arquivos e depois compilar com `pio run` em cada janela.
+
+Cada instância utiliza sensores do Wokwi, seu próprio firmware, circuito e diretório `.pio`. O ID (`esp32-001`) identifica a leitura na API. O MAC (`02:00:00:00:00:01`) identifica a interface Wi-Fi, usando o atributo `macAddress` documentado em https://docs.wokwi.com/guides/esp32#changing-the-mac-address. MACs distintos eliminam identidades duplicadas, mas não garantem a resolução de falhas TLS ou a disponibilidade de várias sessões na sua conta Wokwi.
+
+Todos usam a URL configurada no firmware. Publique a API com suporte a `equipamento_id` para salvar a identificação; o usuário MySQL precisa de permissão ALTER para a criação da coluna no banco existente. Leituras antigas continuam preservadas. Para consultar um equipamento: `GET /leituras?equipamento_id=esp32-001&limite=10`.
+
+A execução simultânea precisa ser validada no VS Code: este ambiente cloud não possui a extensão gráfica. Monitore HTTP 201 nos terminais de todas as instâncias, erros e tempos de resposta, além do Render/banco. O SCADA mostra a leitura global mais recente de cada consulta e não captura todas as leituras entre consultas. Muitas instâncias também podem limitar o desempenho do computador, sem representar o limite da API.
 
 ## Organização
 
-- `src/main.cpp`: firmware base do Wokwi; edite aqui para gerar novas instâncias.
-- `diagram.json`, `platformio.ini` e `wokwi.toml`: circuito e configuração da simulação base.
-- `preparar_wokwi.py`: gerador das instâncias independentes.
+- `src/main.cpp`: firmware base do Wokwi.
+- `diagram.json`, `platformio.ini`, `wokwi.toml`: circuito e configuração base.
+- `preparar_wokwi.py`: prepara e amplia os grupos.
 - `.wokwi-instances/`: projetos gerados, ignorados pelo Git.
-- `prototipo/`: projeto PlatformIO separado do protótipo físico. Para compilá-lo: `pio run -d firmware/esp32/prototipo`, na raiz do repositório.
-
-O simulador Python de valores aleatórios foi removido. A pasta `src/` da simulação base agora contém somente `main.cpp`, evitando compilar as duas versões do firmware juntas.
-
-## Gerar e executar
-
-A instância atual continua intacta. Para gerar duas cópias independentes do circuito e do firmware:
-
-```bash
-python firmware/esp32/preparar_wokwi.py --quantidade 2
-```
-
-Abra `firmware/esp32/.wokwi-instances/esp32-001` em uma janela do VS Code e `esp32-002` em outra (Arquivo → Nova Janela → Abrir Pasta). Abra cada pasta individualmente, sem reunir as duas em um workspace. Na máquina que já executa Wokwi e PlatformIO, em cada janela:
-
-1. Abra o terminal e execute `pio run`.
-2. Abra a paleta de comandos e execute `Wokwi: Start Simulator`.
-3. Mantenha ambas as simulações rodando. Os controles dos sensores são independentes; altere um potenciômetro em cada janela para verificar.
-
-Cada projeto compila só `main.cpp`, usa seu próprio `.pio`, `diagram.json` e `wokwi.toml`, e envia um ID fixo diferente (`esp32-001`, `esp32-002`). Todos usam a URL de API configurada no firmware original. Para salvar os IDs, publique primeiro a API que aceita `equipamento_id` e cria a coluna correspondente; ela precisa de permissão ALTER no MySQL. Sem esse deploy, a API antiga poderá aceitar as leituras mas ignorar os IDs.
-
-Os projetos gerados são cópias: alterações posteriores no firmware original não se propagam automaticamente. Para alterar delays em uma instância, edite seu `src/main.cpp`, compile novamente e reinicie aquela simulação. Para aplicar alterações novas do original a todas, gere em outra pasta com `--saida`. O gerador recusa sobrescrever projetos existentes.
-
-Depois de validar dois, gere quatro em outro destino:
-
-```bash
-python firmware/esp32/preparar_wokwi.py --quantidade 4 --saida firmware/esp32/.wokwi-instances/quatro
-```
-
-Pare o grupo anterior se quiser exatamente quatro equipamentos ativos, abra cada pasta gerada em uma janela e repita a compilação/inicialização. O mesmo comando aceita 8, 16 ou 32. Não misture grupos com IDs iguais no mesmo teste: a numeração recomeça em esp32-001 a cada geração.
-
-Isso executa o firmware e sensores reais do simulador Wokwi, sem substituir por envios Python. As instâncias começam manualmente; ficam ativas simultaneamente, mas não começam no mesmo milissegundo. A conexão de cada uma precisa funcionar como na instância que você já usa. A disponibilidade de sessões simultâneas depende da extensão e de sua conta Wokwi; este ambiente cloud não possui a extensão gráfica e não validou essa capacidade.
-
-O SCADA atual identifica o equipamento da última leitura global e do histórico; não captura todas as leituras entre consultas nem mede latências de todos os dispositivos. Verifique a persistência por equipamento com `GET /leituras?equipamento_id=esp32-001&limite=10`. Para descobrir capacidade da API com esses testes, registre falhas/tempos no monitor serial de cada instância e monitore o Render e o banco. O desempenho do computador com muitas instâncias Wokwi também pode limitar o teste.
+- `prototipo/`: projeto separado do equipamento físico (`pio run -d firmware/esp32/prototipo`).
+- `tests/`: testes do gerador (`python -m unittest discover -s firmware/esp32/tests`).
