@@ -231,3 +231,6 @@ config_secrets.py
 # Sistema operacional
 .DS_Store
 Thumbs.db
+
+# Projetos Wokwi gerados para testes simultâneos
+.wokwi-instances/

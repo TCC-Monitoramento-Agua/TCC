@@ -3,6 +3,7 @@ USE monitoramento_agua;
 
 CREATE TABLE IF NOT EXISTS leituras (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    equipamento_id VARCHAR(64) NULL,
     ph FLOAT NOT NULL,
     turbidez FLOAT NOT NULL,
     temperatura FLOAT NOT NULL,
