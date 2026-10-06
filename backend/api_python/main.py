@@ -1,4 +1,5 @@
 import os
+import re
 from contextlib import closing
 from datetime import datetime
 from typing import Any
@@ -88,6 +89,7 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS leituras (
                 id INT AUTO_INCREMENT PRIMARY KEY,
+                equipamento_id VARCHAR(64) NULL,
                 ph FLOAT NOT NULL,
                 turbidez FLOAT NOT NULL,
                 temperatura FLOAT NOT NULL,
@@ -96,6 +98,15 @@ def init_db() -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        # Compatibilidade com bancos existentes: preserva leituras antigas como NULL.
+        cursor.execute("SHOW COLUMNS FROM leituras LIKE 'equipamento_id'")
+        if cursor.fetchone() is None:
+            try:
+                cursor.execute("ALTER TABLE leituras ADD COLUMN equipamento_id VARCHAR(64) NULL AFTER id")
+            except mysql.connector.Error as error:
+                # Outro worker pode ter aplicado a migração ao mesmo tempo.
+                if error.errno != 1060:
+                    raise
         conn.commit()
         cursor.close()
 
@@ -109,6 +120,15 @@ def ensure_db_schema() -> None:
 
 
 def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
+    if not isinstance(dados, dict):
+        return False, "O JSON deve ser um objeto"
+    equipamento_id = dados.get("equipamento_id")
+    if equipamento_id is not None and (
+        not isinstance(equipamento_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", equipamento_id)
+    ):
+        return False, "equipamento_id deve ter de 1 a 64 caracteres: letras, números, _, ., : ou -"
+
     campos_obrigatorios = ["ph", "turbidez", "temperatura"]
 
     for campo in campos_obrigatorios:
@@ -230,10 +250,10 @@ def receber_leitura():
             cursor.execute(
                 """
                 INSERT INTO leituras
-                (ph, turbidez, temperatura, orp, data_hora)
-                VALUES (%s, %s, %s, %s, %s)
+                (equipamento_id, ph, turbidez, temperatura, orp, data_hora)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (ph, turbidez, temperatura, orp, data_hora),
+                (dados.get("equipamento_id"), ph, turbidez, temperatura, orp, data_hora),
             )
 
             conn.commit()
@@ -244,7 +264,8 @@ def receber_leitura():
             {
                 "status": "ok",
                 "mensagem": "Leitura salva com sucesso",
-                "id": leitura_id
+                "id": leitura_id,
+                "equipamento_id": dados.get("equipamento_id")
             }
         ), 201
 
@@ -270,20 +291,22 @@ def receber_leitura():
 @app.route("/leituras", methods=["GET"])
 def listar_leituras():
     limite = request.args.get("limite", default=10, type=int)
+    if not 1 <= limite <= 1000:
+        return jsonify({"status": "erro", "message": "limite deve estar entre 1 e 1000"}), 400
+    equipamento_id = request.args.get("equipamento_id")
 
     try:
         with closing(get_connection()) as conn:
             cursor = conn.cursor(dictionary=True)
 
-            cursor.execute(
-                """
-                SELECT id, ph, turbidez, temperatura, orp, data_hora
-                FROM leituras
-                ORDER BY id DESC
-                LIMIT %s
-                """,
-                (limite,),
-            )
+            query = "SELECT id, equipamento_id, ph, turbidez, temperatura, orp, data_hora FROM leituras"
+            params = []
+            if equipamento_id is not None:
+                query += " WHERE equipamento_id = %s"
+                params.append(equipamento_id)
+            query += " ORDER BY id DESC LIMIT %s"
+            params.append(limite)
+            cursor.execute(query, tuple(params))
 
             resultados = cursor.fetchall()
             cursor.close()

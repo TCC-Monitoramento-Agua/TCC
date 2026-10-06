@@ -82,6 +82,7 @@ async function buscarDadosDaApi() {
 
         const leitura = {
             id: leituraAPI.id,
+            equipamento_id: leituraAPI.equipamento_id,
             ph: Number(leituraAPI.ph),
             temperatura: Number(leituraAPI.temperatura),
             orp: Number(leituraAPI.orp),
@@ -149,6 +150,8 @@ ATUALIZA OS CARDS
 ====================================================
 */
 function atualizarCards(dados) {
+    document.getElementById("equipamentoLeitura").textContent =
+        dados.equipamento_id || "Não identificado";
     console.log(
         "Atualizando cards com:",
         dados
@@ -289,7 +292,11 @@ function atualizarTabelaHistorico() {
                     "tr"
                 );
 
-            linha.innerHTML = `
+            const equipamento = document.createElement("td");
+            equipamento.textContent = item.equipamento_id || "Não identificado";
+            linha.appendChild(equipamento);
+            const valores = document.createElement("tr");
+            valores.innerHTML = `
                 <td>
                     ${formatarData(item.created_at)}
                 </td>
@@ -311,6 +318,9 @@ function atualizarTabelaHistorico() {
                 </td>
             `;
 
+            while (valores.firstChild) {
+                linha.appendChild(valores.firstChild);
+            }
             tabela.appendChild(linha);
         }
     );

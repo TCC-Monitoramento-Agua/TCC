@@ -10,6 +10,12 @@
 // API
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 
+// ID opcional por instância (útil no Wokwi, onde o MAC pode se repetir).
+// Exemplo de build flag: -D EQUIPAMENTO_ID=\"esp32-001\"
+#ifndef EQUIPAMENTO_ID
+#define EQUIPAMENTO_ID ""
+#endif
+
 // NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
 // Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
 const char* TIME_ZONE = "BRT3";
@@ -182,7 +188,9 @@ void sendReading() {
   Serial.print(orp, 0);
   Serial.println(" mV");
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
+  doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
+      ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
   doc["ph"] = ph;
   doc["turbidez"] = turbidez;
   doc["temperatura"] = temperatura;
