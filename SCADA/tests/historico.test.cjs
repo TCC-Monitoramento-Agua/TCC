@@ -72,3 +72,15 @@ test('limita a tabela a dez registros e trata ORP ausente como sem leitura', asy
     assert.equal(rows[0].orp, null);
     assert.equal(app.elements.get('valorOrp').textContent, '--');
 });
+
+
+test('cards usam leitura mais recente no tempo, mesmo com ID menor', async () => {
+    const app = dashboard();
+    const rows = await app.consultar([
+        leitura(1, 'esp32-001', { ph: 8, data_hora: '2026-10-06T19:00:00-03:00' }),
+        leitura(2, 'esp32-002', { ph: 7, data_hora: '2026-10-06T18:00:00-03:00' })
+    ]);
+    assert.deepEqual(rows.map(x => x.id), [1, 2]);
+    assert.equal(app.elements.get('equipamentoLeitura').textContent, 'esp32-001');
+    assert.equal(app.elements.get('valorPh').textContent, '8.00');
+});

@@ -53,7 +53,7 @@ async function buscarDadosDaApi() {
             throw new Error("A API retornou uma lista de leituras inválida.");
         }
 
-        // A API entrega as últimas leituras por ID decrescente.
+        // A API entrega as leituras pelo horário da medição, com ID como desempate.
         // Substitui o histórico completo para refletir também limpezas do banco.
         historico = dados.leituras.slice(0, 10).map((leituraAPI) => ({
             id: leituraAPI.id,

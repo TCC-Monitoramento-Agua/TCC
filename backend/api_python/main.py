@@ -304,7 +304,7 @@ def listar_leituras():
             if equipamento_id is not None:
                 query += " WHERE equipamento_id = %s"
                 params.append(equipamento_id)
-            query += " ORDER BY id DESC LIMIT %s"
+            query += " ORDER BY data_hora DESC, id DESC LIMIT %s"
             params.append(limite)
             cursor.execute(query, tuple(params))
 
