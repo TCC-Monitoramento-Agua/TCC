@@ -2,6 +2,7 @@ import os
 from contextlib import closing
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
@@ -11,6 +12,9 @@ import mysql.connector
 app = Flask(__name__)
 CORS(app)
 load_dotenv()
+
+# DATETIME no MySQL representa o horário local de Brasília.
+BRAZIL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", 10))
 DB_SSL_VERIFY = os.getenv("DB_SSL_VERIFY", "true").lower() in ("1", "true", "yes", "on")
@@ -133,10 +137,12 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
 
 def parse_data_hora(data_hora: Any) -> str:
     if not data_hora:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.now(BRAZIL_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
     try:
         data_hora_parsed = datetime.fromisoformat(data_hora.strip())
+        if data_hora_parsed.tzinfo is not None:
+            data_hora_parsed = data_hora_parsed.astimezone(BRAZIL_TIMEZONE)
         return data_hora_parsed.strftime("%Y-%m-%d %H:%M:%S")
     except (AttributeError, ValueError) as error:
         raise ValueError("Formato inválido para data_hora. Use ISO 8601 ou 'YYYY-MM-DD HH:MM:SS'.") from error
@@ -281,6 +287,12 @@ def listar_leituras():
 
             resultados = cursor.fetchall()
             cursor.close()
+
+        # Evita que o Flask serialize um DATETIME local como GMT.
+        for leitura in resultados:
+            leitura["data_hora"] = leitura["data_hora"].replace(
+                tzinfo=BRAZIL_TIMEZONE
+            ).isoformat()
 
         return jsonify(
             {

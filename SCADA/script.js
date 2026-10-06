@@ -372,7 +372,8 @@ function formatarData(data) {
     }
 
     return dataObj.toLocaleString(
-        "pt-BR"
+        "pt-BR",
+        { timeZone: "America/Sao_Paulo" }
     );
 }
 
