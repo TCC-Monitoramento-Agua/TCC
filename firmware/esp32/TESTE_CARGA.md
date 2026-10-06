@@ -1,5 +1,17 @@
 # Vários equipamentos no Wokwi do VS Code
 
+## Organização
+
+- `src/main.cpp`: firmware base do Wokwi; edite aqui para gerar novas instâncias.
+- `diagram.json`, `platformio.ini` e `wokwi.toml`: circuito e configuração da simulação base.
+- `preparar_wokwi.py`: gerador das instâncias independentes.
+- `.wokwi-instances/`: projetos gerados, ignorados pelo Git.
+- `prototipo/`: projeto PlatformIO separado do protótipo físico. Para compilá-lo: `pio run -d firmware/esp32/prototipo`, na raiz do repositório.
+
+O simulador Python de valores aleatórios foi removido. A pasta `src/` da simulação base agora contém somente `main.cpp`, evitando compilar as duas versões do firmware juntas.
+
+## Gerar e executar
+
 A instância atual continua intacta. Para gerar duas cópias independentes do circuito e do firmware:
 
 ```bash
