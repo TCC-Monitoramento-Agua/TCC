@@ -12,3 +12,11 @@ class QueueCoreTests(unittest.TestCase):
             binary = Path(folder) / 'queue-test'
             subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-I', str(base/'include'), str(base/'tests/fila_core.cpp'), '-o', str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
+
+    @unittest.skipUnless(shutil.which('g++'), 'Compilador C++ nativo não instalado')
+    def test_incremental_flash_storage_and_legacy_files(self):
+        base = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as folder:
+            binary = Path(folder) / 'flash-test'
+            subprocess.run(['g++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-I', str(base/'tests/flash_stubs'), '-I', str(base/'include'), str(base/'tests/flash_storage.cpp'), '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)

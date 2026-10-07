@@ -150,6 +150,7 @@ void iniciarFila() {
   mutexFila = xSemaphoreCreateMutex();
   if (!mutexFila) { Serial.println("[FILA] ALERTA: sem memória para mutex"); return; }
   bootId = gerarLeituraId();
+  Serial.println("[FILA] Inicializando armazenamento e verificando registros...");
   flashPronta = armazenamento.montar(CAPACIDADE_FILA) && fila.iniciar();
   if (!flashPronta) {
     Serial.println("[FILA] ALERTA: flash indisponível/corrompida. Dados existentes não serão apagados.");

@@ -14,7 +14,7 @@ Valores em milissegundos: 10000 = 10 s, 30000 = 30 s, 60000 = 1 min. O intervalo
 
 ## Capacidade e armazenamento
 
-`CAPACIDADE_FILA = 2880` em `include/QueueRuntime.h` limita a fila a 2880 registros. Cada slot ocupa 512 bytes, inclusive tamanho, sequência e CRC: 1.474.560 bytes para o arquivo de dados. A partição de flash é de 0x1F0000 bytes em uma placa ESP32 de **4 MB**, com espaço adicional para LittleFS, confirmações e referências de relógio. O tamanho de flash físico precisa ser confirmado antes de gravar em uma placa diferente.
+`CAPACIDADE_FILA = 2880` em `include/QueueRuntime.h` limita a fila a 2880 registros. Cada slot ocupa 512 bytes, inclusive tamanho, sequência e CRC: até 1.474.560 bytes para o arquivo de dados. O arquivo começa vazio e cresce um slot por medição até esse limite, evitando gravar 1,5 MB de zeros na inicialização. Arquivos antigos pré-alocados continuam aceitos; tamanho parcial de registro ou ACK incompatível bloqueiam a fila. A partição de flash é de 0x1F0000 bytes em uma placa ESP32 de **4 MB**, com espaço adicional para LittleFS, confirmações e referências de relógio. O tamanho de flash físico precisa ser confirmado antes de gravar em uma placa diferente.
 
 Com intervalo de 30 segundos, a capacidade corresponde a 24 horas de medições sem envio; com 10 segundos, corresponde a 8 horas; com 60 segundos, 48 horas. A capacidade de registros foi testada preenchendo a fila, mas não constitui um teste físico contínuo de 24 horas, nem certificação de resistência a falhas elétricas/desgaste. Não altere a capacidade ou o mapa de partições com pendências: esvazie/exporte a fila primeiro. Metadados de muitos reinícios também consomem espaço adicional.
 

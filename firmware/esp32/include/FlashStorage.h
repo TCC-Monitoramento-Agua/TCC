@@ -6,6 +6,7 @@
 class FlashStorage : public ArmazenamentoFila {
   struct Ack { uint64_t sequencia; uint32_t magic; uint32_t crc; };
   const char* arquivo = "/fila.bin";
+  size_t tamanhoArquivo = 0, tamanhoMaximo = 0;
  public:
   bool montar(size_t capacidade) {
     if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {
@@ -20,33 +21,37 @@ class FlashStorage : public ArmazenamentoFila {
       }
       if (!LittleFS.format() || !LittleFS.begin(false, "/littlefs", 10, "storage")) return false;
     }
-    const size_t tamanho = capacidade * sizeof(RegistroFlash);
+    tamanhoMaximo = capacidade * sizeof(RegistroFlash);
     if (!LittleFS.exists(arquivo)) {
+      Serial.println("[FILA] Criando arquivo vazio; os slots serão gravados conforme a coleta");
       File file = LittleFS.open(arquivo, "w");
       if (!file) return false;
-      uint8_t zeros[1024] = {};
-      bool ok = true;
-      for (size_t pos = 0; pos < tamanho; pos += sizeof(zeros)) {
-        size_t n = min(sizeof(zeros), tamanho - pos);
-        if (file.write(zeros, n) != n) { ok = false; break; }
-      }
       file.flush(); file.close();
-      if (!ok || !gravarConfirmacao(0)) return false;
+      if (!gravarConfirmacao(0)) return false;
     }
     File file = LittleFS.open(arquivo, "r");
-    bool ok = file && file.size() == tamanho;
+    tamanhoArquivo = file ? file.size() : 0;
+    bool ok = file && tamanhoArquivo <= tamanhoMaximo && tamanhoArquivo % sizeof(RegistroFlash) == 0;
     file.close();
     return ok;
   }
   bool ler(size_t slot, RegistroFlash& r) override {
+    const size_t pos = slot * sizeof(r);
+    if (pos >= tamanhoMaximo) return false;
+    // Slots ainda não criados são vazios; não precisam de escrita nem leitura de flash.
+    if (pos >= tamanhoArquivo) { memset(&r, 0, sizeof(r)); return true; }
     File file = LittleFS.open(arquivo, "r");
-    bool ok = file && file.seek(slot * sizeof(r)) && file.read(reinterpret_cast<uint8_t*>(&r), sizeof(r)) == sizeof(r);
+    bool ok = file && file.size() == tamanhoArquivo && file.seek(pos) && file.read(reinterpret_cast<uint8_t*>(&r), sizeof(r)) == sizeof(r);
     file.close(); return ok;
   }
   bool gravar(size_t slot, const RegistroFlash& r) override {
+    const size_t pos = slot * sizeof(r);
+    if (pos >= tamanhoMaximo || pos > tamanhoArquivo) return false;
     File file = LittleFS.open(arquivo, "r+");
-    bool ok = file && file.seek(slot * sizeof(r)) && file.write(reinterpret_cast<const uint8_t*>(&r), sizeof(r)) == sizeof(r);
-    file.flush(); file.close(); return ok;
+    bool ok = file && file.size() == tamanhoArquivo && file.seek(pos) && file.write(reinterpret_cast<const uint8_t*>(&r), sizeof(r)) == sizeof(r);
+    file.flush();
+    if (ok) tamanhoArquivo = file.size();
+    file.close(); return ok;
   }
   bool lerConfirmacao(uint64_t& seq) override {
     Ack ack;
@@ -54,6 +59,8 @@ class FlashStorage : public ArmazenamentoFila {
     bool ok = file && file.size() == sizeof(ack) && file.read(reinterpret_cast<uint8_t*>(&ack), sizeof(ack)) == sizeof(ack);
     file.close();
     if (!ok || ack.magic != 0x41434b31 || ack.crc != crcFila(&ack, offsetof(Ack, crc))) return false;
+    // Antes da primeira volta do anel, um ACK além dos slots presentes indica truncamento.
+    if (tamanhoArquivo < tamanhoMaximo && ack.sequencia > tamanhoArquivo / sizeof(RegistroFlash)) return false;
     seq = ack.sequencia; return true;
   }
   bool gravarConfirmacao(uint64_t seq) override {
