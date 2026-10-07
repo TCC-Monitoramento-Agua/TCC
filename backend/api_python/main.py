@@ -1,3 +1,6 @@
+# Versão de deploy: 1
+# Incrementar este número em cada commit para alterar o arquivo monitorado pelo Render.
+
 import os
 import re
 import math
