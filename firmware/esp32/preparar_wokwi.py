@@ -2,6 +2,7 @@
 import argparse
 import copy
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -34,6 +35,33 @@ def salvar_mac(projeto, mac):
     attrs['macAddress'] = mac
     arquivo.write_text(json.dumps(circuito, indent=2) + '\n', encoding='utf-8')
     print(f'MAC atualizado: {projeto.name} → {mac} (backup: {backup.name})')
+
+
+def configurar_serial(projeto, porta):
+    arquivo = projeto / 'wokwi.toml'
+    original = arquivo.read_text(encoding='utf-8')
+    linhas = original.splitlines(keepends=True)
+    inicio = next((i for i, line in enumerate(linhas) if line.strip() == '[wokwi]'), None)
+    if inicio is None:
+        raise ValueError(f'{projeto.name}: seção [wokwi] não encontrada')
+    fim = next((i for i in range(inicio + 1, len(linhas)) if linhas[i].lstrip().startswith('[')), len(linhas))
+    for i in range(inicio + 1, fim):
+        if re.match(r'\s*rfc2217ServerPort\s*=', linhas[i]):
+            linhas[i] = f'rfc2217ServerPort = {porta}\n'
+            break
+    else:
+        if fim > 0 and not linhas[fim-1].endswith('\n'):
+            linhas[fim-1] += '\n'
+        linhas.insert(fim, f'rfc2217ServerPort = {porta}\n')
+    novo = ''.join(linhas)
+    if novo != original:
+        backup = arquivo.with_name('wokwi.toml.bak')
+        indice = 1
+        while backup.exists():
+            backup = arquivo.with_name(f'wokwi.toml.bak.{indice}')
+            indice += 1
+        shutil.copy2(arquivo, backup)
+        arquivo.write_text(novo, encoding='utf-8')
 
 
 def preparar(quantidade, destino):
@@ -80,6 +108,7 @@ def preparar(quantidade, destino):
             print(f'Criada: {nome}')
     for numero, nome in enumerate(nomes, 1):
         salvar_mac(destino / nome, f'02:00:00:00:00:{numero:02x}')
+        configurar_serial(destino / nome, 4000 + numero)
     return [destino / nome for nome in nomes]
 
 
@@ -92,6 +121,7 @@ def main():
     parser.add_argument('--compilar', action='store_true', help='Compila o grupo com PlatformIO antes de abrir')
     parser.add_argument('--abrir', action='store_true', help='Abre novas instâncias no VS Code; se nenhuma for nova, abre o grupo')
     parser.add_argument('--abrir-todas', action='store_true', help='Abre todo o grupo no VS Code, mesmo ao adicionar instâncias')
+    parser.add_argument("--logs", action="store_true", help="Reúne as seriais no terminal principal até Ctrl+C")
     args = parser.parse_args()
     destino = args.saida.resolve()
     existentes = {p.name for p in destino.glob('esp32-*') if p.is_dir()}
@@ -125,6 +155,12 @@ def main():
     print(f'Grupo preparado: {len(projetos)} instâncias em {destino}')
     print('Use Wokwi: Start Simulator em cada janela. Sem --compilar, execute pio run primeiro.')
     print('Instâncias fora do total solicitado não são apagadas ou paradas. Pare-as manualmente se necessário.')
+    if args.logs:
+        try:
+            return subprocess.run([sys.executable, str(BASE / 'monitor_wokwi.py'),
+                                   '--diretorio', str(destino), '--quantidade', str(quantidade)]).returncode
+        except KeyboardInterrupt:
+            return 130
     return 0
 
 
