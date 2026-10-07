@@ -77,5 +77,24 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ['tool', 'run'])
 
 
+
+class FirmwareUpdateTests(unittest.TestCase):
+    def test_explicit_update_backs_up_old_source_and_copies_flash_resources(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder)
+            project = generator.preparar(2, target)[0]
+            source = project / 'src/main.cpp'
+            source.write_text(source.read_text() + '\n// ajuste manual\n')
+            original = source.read_bytes()
+            generator.preparar(2, target)
+            self.assertEqual(source.read_bytes(), original)
+            generator.preparar(2, target, atualizar_firmware=True)
+            self.assertEqual((project/'src/main.cpp.bak').read_bytes(), original)
+            self.assertNotIn('ajuste manual', source.read_text())
+            self.assertTrue((project/'include/QueueRuntime.h').is_file())
+            self.assertTrue((project/'partitions.csv').is_file())
+            self.assertIn('firmware-merged.bin', (project/'wokwi.toml').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

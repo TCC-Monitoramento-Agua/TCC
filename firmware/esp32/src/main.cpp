@@ -37,39 +37,14 @@ const char* password = "";
 OneWire oneWire(ONEWIRE_PIN);
 DallasTemperature sensors(&oneWire);
 
-unsigned long lastSend = 0;
-const unsigned long SEND_INTERVAL = 10000;
+// ALTERE AQUI: intervalo entre INÍCIOS das coletas, em milissegundos.
+const uint32_t INTERVALO_MEDICAO_MS = 30000; // 30 segundos
+uint32_t ultimaMedicao = 0;
 const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
 const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
 
 const int NUM_AMOSTRAS = 10;
 const unsigned long TEMPO_ENTRE_AMOSTRAS = 500; // 500 ms entre amostras
-
-void connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
-
-  Serial.print("\n[WiFi] Conectando ao: ");
-  Serial.println(ssid);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  unsigned long start = millis();
-
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-    Serial.print('.');
-    delay(500);
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WiFi] CONECTADO!");
-    Serial.print("[WiFi] IP local: ");
-    Serial.println(WiFi.localIP());
-    return;
-  }
-
-  Serial.println("\n[WiFi] ERRO ao conectar");
-}
 
 // Gerado uma vez por medição; as tentativas HTTP reutilizam o mesmo JSON.
 String gerarLeituraId() {
@@ -170,73 +145,10 @@ float lerMediaTemperatura() {
   return somaTemp / amostrasValidas;
 }
 
-int enviarPostComRetry(const String& payload) {
-const int maxAttempts = 3;
-for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-Serial.print("[HTTP] Tentativa ");
-Serial.print(attempt);
-Serial.print("/" );
-Serial.println(maxAttempts);
-
-WiFiClientSecure client;
-client.setInsecure();
-HTTPClient http;
-http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
-http.setTimeout(HTTP_TIMEOUT_MS);
-
-Serial.println("[HTTP] Iniciando conexao HTTPS...");
-if (!http.begin(client, serverUrl)) {
-Serial.println("[HTTP] ✗ ERRO ao iniciar conexao HTTPS!");
-http.end();
-client.stop();
-} else {
-http.addHeader("Content-Type", "application/json");
-
-Serial.println("[HTTP] Enviando POST...");
-int httpCode = http.POST(payload);
-Serial.print("[HTTP] Codigo HTTP: ");
-Serial.println(httpCode);
-
-String response = http.getString();
-Serial.print("[RESPOSTA] ");
-Serial.println(response);
-
-if (httpCode == 200 || httpCode == 201) {
-Serial.println("[HTTP] ✓ SUCESSO! Leitura registrada.");
-http.end();
-client.stop();
-return httpCode;
-}
-
-if (httpCode < 0) {
-Serial.print("[HTTP] ERRO DE CONEXAO: ");
-Serial.println(http.errorToString(httpCode));
-} else {
-Serial.print("[HTTP] ✗ FALHA! Esperado 200/201, recebido: ");
-Serial.println(httpCode);
-}
-
-http.end();
-client.stop();
-}
-
-if (attempt < maxAttempts) {
-Serial.println("[HTTP] Aguardando 2000 ms antes da proxima tentativa...");
-delay(2000);
-}
-}
-
-Serial.println("[HTTP] Todas as tentativas falharam. Leitura descartada nesta versao.");
-return -1;
-}
+#include "QueueRuntime.h"
 
 void sendReading() {
 // Verificar se a hora foi sincronizada
-time_t nowSec = time(nullptr);
-  if (nowSec < 1000000000) {
-    Serial.println("[SENSOR] ERRO: Hora nao sincronizada. Pulando envio.");
-    return;
-  }
 
 // Leitura dos sensores
 float temperature = lerMediaTemperatura();
@@ -257,7 +169,7 @@ Serial.println(" C");
 String timestamp = getTimestamp();
 
 // Criar JSON com ou sem data_hora dependendo da sincronizacao NTP
-StaticJsonDocument<512> doc;
+StaticJsonDocument<1024> doc;
 doc["leitura_id"] = gerarLeituraId();
 doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
     ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
@@ -267,100 +179,30 @@ doc["temperatura"] = temperature;
 doc["orp"] = orp;
 doc["data_hora"] = timestamp;
 
-String payload;
-serializeJson(doc, payload);
-
-// ===== DEBUG: Imprimir dados =====
-Serial.println("\n[HTTP] ========== ENVIANDO LEITURA ==========");
-Serial.print("[URL] ");
-Serial.println(serverUrl);
-
-Serial.print("[JSON] ");
-Serial.println(payload);
-
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[HTTP] Wi-Fi desconectado antes do envio. Tentando reconectar...");
-connectWiFi();
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[HTTP] Nao foi possivel reconectar. Pulando envio.");
-Serial.println("[HTTP] ========== FIM DO ENVIO ==========");
-return;
-}
-}
-
-int result = enviarPostComRetry(payload);
-if (result < 0) {
-Serial.println("[HTTP] ERRO: falha ao enviar mesmo apos tentativas.");
-}
-
-Serial.println("[HTTP] ========== FIM DO ENVIO ==========");
+  armazenarMedicao(doc);
 }
 
 void setup() {
-Serial.begin(115200);
-delay(1000);
-Serial.flush();
-
-Serial.println("\n\n================================");
-Serial.println("BOOT ESP32 WOKWI");
-Serial.println("================================\n");
-
-Serial.println("[SETUP] Inicializando GPIO e sensores...");
-analogSetPinAttenuation(PH_PIN, ADC_11db);
-analogSetPinAttenuation(TURB_PIN, ADC_11db);
-analogSetPinAttenuation(ORP_PIN, ADC_11db);
-
-sensors.begin();
-Serial.println("[SETUP] Sensores inicializados.\n");
-
-Serial.println("[SETUP] Conectando ao Wi-Fi...");
-connectWiFi();
-
-Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
-configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
-time_t nowSec = time(nullptr);
-int attempts = 0;
-while (nowSec < 1000000000 && attempts < 20) {
-delay(500);
-nowSec = time(nullptr);
-attempts++;
-}
-
-if (nowSec >= 1000000000) {
-Serial.println("[SETUP] Horario de Brasilia sincronizado: " + getTimestamp());
-} else {
-Serial.println("[SETUP] Falha ao sincronizar horario via NTP.br.");
-}
-Serial.println("[SETUP] Setup completo! Iniciando loop...\n");
+  Serial.begin(115200);
+  delay(1000);
+  analogSetPinAttenuation(PH_PIN, ADC_11db);
+  analogSetPinAttenuation(TURB_PIN, ADC_11db);
+  analogSetPinAttenuation(ORP_PIN, ADC_11db);
+  sensors.begin();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
+  iniciarFila();
+  ultimaMedicao = millis() - INTERVALO_MEDICAO_MS;
 }
 
 void loop() {
-static unsigned long lastDebugTime = 0;
-
-// Debug a cada 10 segundos
-if (millis() - lastDebugTime >= 10000) {
-lastDebugTime = millis();
-Serial.print("[LOOP] Rodando... ");
-Serial.print(millis() / 1000);
-Serial.print("s | WiFi: ");
-Serial.println(WiFi.status() == WL_CONNECTED ? "OK" : "ERRO");
-}
-
-// Reconectar Wi-Fi se necessário
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[LOOP] Wi-Fi desconectado, tentando reconectar...");
-connectWiFi();
-}
-
-// Enviar leitura a cada SEND_INTERVAL
-if (millis() - lastSend >= SEND_INTERVAL) {
-if (WiFi.status() == WL_CONNECTED) {
-sendReading();
-} else {
-Serial.println("[LOOP] Nao ha conexao Wi-Fi. Pulando envio.");
-}
-lastSend = millis();
-}
-
-delay(100);
+  if (millis() - ultimaMedicao >= INTERVALO_MEDICAO_MS) {
+    ultimaMedicao = millis();
+    sendReading(); // Coleta e salva; a tarefa separada cuida dos envios.
+    if (millis() - ultimaMedicao >= INTERVALO_MEDICAO_MS) {
+      Serial.println("[SENSOR] ALERTA: duração da coleta excedeu o intervalo configurado");
+    }
+  }
+  delay(20);
 }

@@ -64,7 +64,7 @@ def configurar_serial(projeto, porta):
         arquivo.write_text(novo, encoding='utf-8')
 
 
-def preparar(quantidade, destino):
+def preparar(quantidade, destino, atualizar_firmware=False):
     if not 1 <= quantidade <= 32:
         raise ValueError('A quantidade total deve estar entre 1 e 32.')
     nomes = [f'esp32-{i:03d}' for i in range(1, quantidade + 1)]
@@ -96,7 +96,7 @@ def preparar(quantidade, destino):
             (projeto / 'src/main.cpp').write_text(f'#define EQUIPAMENTO_ID "{nome}"\n' + fonte, encoding='utf-8')
             (projeto / 'diagram.json').write_text(json.dumps(circuito_instancia, indent=2) + '\n', encoding='utf-8')
             (projeto / 'platformio.ini').write_text(config, encoding='utf-8')
-            (projeto / 'wokwi.toml').write_text('[wokwi]\nversion = 1\nfirmware = ".pio/build/esp32dev/firmware.bin"\nelf = ".pio/build/esp32dev/firmware.elf"\n', encoding='utf-8')
+            (projeto / 'wokwi.toml').write_text('[wokwi]\nversion = 1\nfirmware = ".pio/build/esp32dev/firmware-merged.bin"\nelf = ".pio/build/esp32dev/firmware.elf"\n', encoding='utf-8')
             tarefas = {'version': '2.0.0', 'tasks': [{
                 'label': 'Compilar ESP32', 'type': 'shell', 'command': 'pio', 'args': ['run'],
                 'options': {'cwd': '${workspaceFolder}'}, 'problemMatcher': [],
@@ -106,6 +106,44 @@ def preparar(quantidade, destino):
         for nome in novos:
             shutil.move(str(Path(temporario) / nome), str(destino / nome))
             print(f'Criada: {nome}')
+    for nome in nomes:
+        projeto = destino / nome
+        shutil.copytree(BASE / 'include', projeto / 'include', dirs_exist_ok=True)
+        for recurso in ('partitions.csv', 'gerar_imagem.py'):
+            shutil.copy2(BASE / recurso, projeto / recurso)
+        ini = projeto / 'platformio.ini'
+        texto = ini.read_text(encoding='utf-8')
+        if 'board_build.partitions' not in texto:
+            texto = texto.replace('monitor_speed = 115200', 'monitor_speed = 115200\nboard_build.partitions = partitions.csv')
+        if 'extra_scripts' not in texto:
+            texto = texto.replace('monitor_speed = 115200', 'monitor_speed = 115200\nextra_scripts = post:gerar_imagem.py')
+        ini.write_text(texto, encoding='utf-8')
+        config_wokwi = projeto / 'wokwi.toml'
+        texto = config_wokwi.read_text(encoding='utf-8').replace('/firmware.bin', '/firmware-merged.bin')
+        config_wokwi.write_text(texto, encoding='utf-8')
+        circuito_projeto = json.loads((projeto / 'diagram.json').read_text(encoding='utf-8'))
+        attrs = placa_esp32(circuito_projeto).setdefault('attrs', {})
+        if attrs.get('firmwareOffset') != '0':
+            backup_flash = projeto / 'diagram-before-flash.json.bak'
+            indice = 1
+            while backup_flash.exists():
+                backup_flash = projeto / f'diagram-before-flash.json.bak.{indice}'
+                indice += 1
+            shutil.copy2(projeto / 'diagram.json', backup_flash)
+            attrs['firmwareOffset'] = '0'
+            (projeto / 'diagram.json').write_text(json.dumps(circuito_projeto, indent=2) + '\n', encoding='utf-8')
+        if atualizar_firmware and nome not in novos:
+            arquivo = projeto / 'src/main.cpp'
+            novo = f'#define EQUIPAMENTO_ID "{nome}"\n' + fonte
+            if arquivo.read_text(encoding='utf-8') != novo:
+                backup = arquivo.with_name('main.cpp.bak')
+                indice = 1
+                while backup.exists():
+                    backup = arquivo.with_name(f'main.cpp.bak.{indice}')
+                    indice += 1
+                shutil.copy2(arquivo, backup)
+                arquivo.write_text(novo, encoding='utf-8')
+                print(f'Firmware atualizado: {nome}; backup em {backup.name}')
     for numero, nome in enumerate(nomes, 1):
         salvar_mac(destino / nome, f'02:00:00:00:00:{numero:02x}')
         configurar_serial(destino / nome, 4000 + numero)
@@ -122,6 +160,7 @@ def main():
     parser.add_argument('--abrir', action='store_true', help='Abre novas instâncias no VS Code; se nenhuma for nova, abre o grupo')
     parser.add_argument('--abrir-todas', action='store_true', help='Abre todo o grupo no VS Code, mesmo ao adicionar instâncias')
     parser.add_argument("--logs", action="store_true", help="Reúne as seriais no terminal principal até Ctrl+C")
+    parser.add_argument("--atualizar-firmware", action="store_true", help="Atualiza main.cpp das instâncias antigas a partir da base, criando backups")
     args = parser.parse_args()
     destino = args.saida.resolve()
     existentes = {p.name for p in destino.glob('esp32-*') if p.is_dir()}
@@ -138,12 +177,12 @@ def main():
     if (args.abrir or args.abrir_todas) and not code:
         parser.error('Comando code não encontrado no PATH. Abra as pastas manualmente ou configure o comando do VS Code.')
     try:
-        projetos = preparar(quantidade, destino)
+        projetos = preparar(quantidade, destino, args.atualizar_firmware)
         if args.compilar:
             for projeto in projetos:
                 print(f'Compilando {projeto.name}...', flush=True)
                 subprocess.run([pio, 'run'], cwd=projeto, check=True)
-                if not (projeto / '.pio/build/esp32dev/firmware.bin').is_file():
+                if not (projeto / '.pio/build/esp32dev/firmware-merged.bin').is_file():
                     raise ValueError(f'{projeto.name}: compilação não gerou firmware.bin')
         if args.abrir or args.abrir_todas:
             novos = [p for p in projetos if p.name not in existentes]
