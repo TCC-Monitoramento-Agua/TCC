@@ -15,7 +15,7 @@ class ReadingOrderTests(unittest.TestCase):
         self.db = sqlite3.connect(':memory:')
         self.addCleanup(self.db.close)
         self.db.row_factory = sqlite3.Row
-        self.db.execute('CREATE TABLE leituras (id INTEGER PRIMARY KEY, equipamento_id TEXT, ph REAL, turbidez REAL, temperatura REAL, orp REAL, data_hora TEXT)')
+        self.db.execute('CREATE TABLE leituras (id INTEGER PRIMARY KEY, equipamento_id TEXT, leitura_id TEXT, ph REAL, turbidez REAL, temperatura REAL, orp REAL, data_hora TEXT)')
         self.cursor = self.db.cursor()
         connection = MagicMock()
         cursor = connection.cursor.return_value
@@ -35,7 +35,7 @@ class ReadingOrderTests(unittest.TestCase):
         self.client = main.app.test_client()
 
     def insert(self, id, equipment, timestamp):
-        self.db.execute('INSERT INTO leituras VALUES (?, ?, 7, 2, 25, 300, ?)', (id, equipment, timestamp))
+        self.db.execute('INSERT INTO leituras VALUES (?, ?, NULL, 7, 2, 25, 300, ?)', (id, equipment, timestamp))
 
     def test_newest_measurement_is_selected_before_limit_even_with_lower_id(self):
         self.insert(1, 'esp32-001', '2026-10-06 19:00:00')

@@ -198,3 +198,42 @@ Response:
 
 ## Professor Orientador
 - Marcelo do Carmo Camargo Gaiotto
+
+## Identificação das medições e reenvios
+
+O firmware do Wokwi e do protótipo físico gera um UUID em `leitura_id` uma vez por coleta. O mesmo JSON, com ID e horário originais, é reutilizado nas tentativas HTTP. O `id` auto increment continua identificando a linha do banco; `equipamento_id` identifica o equipamento.
+
+A API cria automaticamente a coluna `leitura_id` e a restrição única `(equipamento_id, leitura_id)` no banco existente. O usuário MySQL precisa de permissão `ALTER`. Leituras antigas são preservadas com `leitura_id=NULL`.
+
+- Primeira gravação: HTTP **201**, com `id`, `equipamento_id`, `leitura_id` e `duplicada=false`.
+- Reenvio da mesma medição: HTTP **200**, com o mesmo `id` e `duplicada=true`.
+- Mesmo equipamento/UUID com horário ou valores diferentes: HTTP **409**, sem modificar a leitura original. A comparação numérica considera a precisão das colunas FLOAT do MySQL.
+- UUID inválido ou ausência de equipamento/horário quando UUID foi informado: HTTP **400**.
+
+Clientes antigos sem `leitura_id` continuam funcionando, mas não têm proteção contra duplicação. Com `leitura_id`, o horário de coleta deve ser enviado explicitamente. Publique a API nova antes de atualizar os dispositivos.
+
+**Esta etapa ainda não implementa a fila na flash:** uma medição pode continuar sendo perdida após as tentativas falharem. A próxima etapa deve guardar o JSON antes do envio e removê-lo apenas após validar uma confirmação com o equipamento e UUID correspondentes.
+
+Instâncias Wokwi já geradas não recebem alterações do firmware base automaticamente. Para experimentar o firmware novo sem substituir ajustes existentes, gere em outro destino com `--saida` e pare o grupo anterior antes de iniciar os mesmos IDs no grupo novo.
+
+## Logs Wokwi em um terminal
+
+Instale PySerial no Python usado pelo gerador: `python -m pip install pyserial`.
+
+```powershell
+python firmware/esp32/preparar_wokwi.py --quantidade 2 --compilar --abrir --logs
+```
+
+O script configura uma porta serial RFC2217 diferente por instância (4001, 4002, etc.), preservando os demais campos do `wokwi.toml` e criando backup se alterá-lo. Após compilar e abrir as janelas, permanece no terminal acompanhando todas as seriais. Use **Wokwi: Start Simulator** manualmente em cada janela e mantenha as abas de simulação visíveis: o Wokwi pode pausar quando ocultas. Para instâncias que já estavam rodando, reinicie a simulação após atualizar a configuração serial.
+
+Cada linha recebe horário local e equipamento, por exemplo `[esp32-002] [HTTP] Codigo HTTP: 201`. JSONs, respostas, erros TLS e mensagens do firmware também aparecem. Não é uma consulta ao banco: são os logs reais do firmware. As mensagens de sucesso continuam refletindo o que o firmware informa; a confirmação de persistência depende da API.
+
+O monitor aguarda instâncias ainda não iniciadas e tenta reconectar quando paradas/reiniciadas. Os logs ficam em `.wokwi-instances/logs/`, em arquivo JSONL único por execução. Ctrl+C encerra apenas o monitor, não as simulações.
+
+Para acompanhar um grupo já preparado sem recompilar ou abrir outras janelas:
+
+```powershell
+python firmware/esp32/monitor_wokwi.py --diretorio firmware/esp32/.wokwi-instances --quantidade 4
+```
+
+Para adicionar equipamentos, encerre o monitor e execute o gerador com o total novo e `--logs`. Evite iniciar vários monitores concorrentes sobre as mesmas portas ou grupos com portas repetidas. A integração com a extensão gráfica precisa ser validada no seu computador; testes locais verificam configuração e processamento dos logs, sem executar a extensão.
