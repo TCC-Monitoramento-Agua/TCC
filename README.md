@@ -200,3 +200,5 @@ Response:
 - Marcelo do Carmo Camargo Gaiotto
 
 A proteção contra duplicação e o teste de reenvio no Wokwi estão descritos em [DEDUPLICACAO.md](firmware/esp32/DEDUPLICACAO.md).
+
+A fila local de 20 medições e os testes de queda de rede, API e banco estão descritos em [FILA_LOCAL.md](firmware/esp32/FILA_LOCAL.md).

@@ -26,6 +26,8 @@ const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 #define TESTAR_DUPLICACAO 0
 #endif
 
+#include "FilaLocal.h"
+
 // NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
 // Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
 const char* TIME_ZONE = "BRT3";
@@ -179,7 +181,7 @@ int enviarPostComRetry(const String& payload) {
   if (deserializeJson(original, payload)) return -1;
   const String leituraId = original["leitura_id"].as<String>();
   const String equipamentoId = original["equipamento_id"].as<String>();
-const int maxAttempts = 3;
+const int maxAttempts = 1; // Repetições agendadas pela fila, sem bloquear em três POSTs seguidos.
 for (int attempt = 1; attempt <= maxAttempts; attempt++) {
 Serial.print("[HTTP] Tentativa ");
 Serial.print(attempt);
@@ -248,18 +250,11 @@ delay(2000);
 }
 }
 
-Serial.println("[HTTP] Todas as tentativas falharam. Leitura descartada nesta versao.");
+Serial.println("[HTTP] Tentativa falhou; leitura permanece na fila.");
 return -1;
 }
 
 void sendReading() {
-// Verificar se a hora foi sincronizada
-time_t nowSec = time(nullptr);
-  if (nowSec < 1000000000) {
-    Serial.println("[SENSOR] ERRO: Hora nao sincronizada. Pulando envio.");
-    return;
-  }
-
 // Leitura dos sensores
 float temperature = lerMediaTemperatura();
 float ph, turbidez, orp;
@@ -279,7 +274,7 @@ Serial.println(" C");
 String timestamp = getTimestamp();
 
 // Criar JSON com ou sem data_hora dependendo da sincronizacao NTP
-StaticJsonDocument<384> doc;
+StaticJsonDocument<1024> doc;
 doc["leitura_id"] = gerarLeituraId();
 doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
     ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
@@ -289,39 +284,7 @@ doc["temperatura"] = temperature;
 doc["orp"] = orp;
 doc["data_hora"] = timestamp;
 
-String payload;
-serializeJson(doc, payload);
-
-// ===== DEBUG: Imprimir dados =====
-Serial.println("\n[HTTP] ========== ENVIANDO LEITURA ==========");
-Serial.print("[URL] ");
-Serial.println(serverUrl);
-
-Serial.print("[JSON] ");
-Serial.println(payload);
-
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[HTTP] Wi-Fi desconectado antes do envio. Tentando reconectar...");
-connectWiFi();
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[HTTP] Nao foi possivel reconectar. Pulando envio.");
-Serial.println("[HTTP] ========== FIM DO ENVIO ==========");
-return;
-}
-}
-
-int result = enviarPostComRetry(payload);
-#if TESTAR_DUPLICACAO
-  if (result == 200 || result == 201) {
-    Serial.println("[TESTE] Reenviando exatamente o mesmo JSON para verificar duplicação");
-    enviarPostComRetry(payload);
-  }
-#endif
-if (result < 0) {
-Serial.println("[HTTP] ERRO: falha ao enviar mesmo apos tentativas.");
-}
-
-Serial.println("[HTTP] ========== FIM DO ENVIO ==========");
+guardarMedicaoLocal(doc);
 }
 
 void setup() {
@@ -342,6 +305,7 @@ sensors.begin();
 Serial.println("[SETUP] Sensores inicializados.\n");
 
 Serial.println("[SETUP] Conectando ao Wi-Fi...");
+iniciarFilaLocal(gerarLeituraId());
 connectWiFi();
 
 Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
@@ -363,32 +327,16 @@ Serial.println("[SETUP] Setup completo! Iniciando loop...\n");
 }
 
 void loop() {
-static unsigned long lastDebugTime = 0;
-
-// Debug a cada 10 segundos
-if (millis() - lastDebugTime >= 10000) {
-lastDebugTime = millis();
-Serial.print("[LOOP] Rodando... ");
-Serial.print(millis() / 1000);
-Serial.print("s | WiFi: ");
-Serial.println(WiFi.status() == WL_CONNECTED ? "OK" : "ERRO");
-}
-
-// Reconectar Wi-Fi se necessário
-if (WiFi.status() != WL_CONNECTED) {
-Serial.println("[LOOP] Wi-Fi desconectado, tentando reconectar...");
-connectWiFi();
-}
-
-// Enviar leitura a cada SEND_INTERVAL
-if (millis() - lastSend >= SEND_INTERVAL) {
-if (WiFi.status() == WL_CONNECTED) {
-sendReading();
-} else {
-Serial.println("[LOOP] Nao ha conexao Wi-Fi. Pulando envio.");
-}
-lastSend = millis();
-}
-
-delay(100);
+  static unsigned long ultimaReconexao = 0;
+  if (WiFi.status() != WL_CONNECTED && millis() - ultimaReconexao >= 30000) {
+    ultimaReconexao = millis();
+    Serial.println("[WiFi] Tentando reconectar; coleta continua");
+    WiFi.begin(ssid, password);
+  }
+  if (millis() - lastSend >= SEND_INTERVAL) {
+    sendReading(); // Também coleta quando o Wi-Fi ou a API estão indisponíveis.
+    lastSend = millis();
+  }
+  processarFilaLocal(enviarPostComRetry);
+  delay(100);
 }

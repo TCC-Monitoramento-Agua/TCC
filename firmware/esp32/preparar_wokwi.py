@@ -1,6 +1,8 @@
 """Prepara ou amplia um grupo de instâncias Wokwi sem substituir seus firmwares."""
 import argparse
 import copy
+import configparser
+import io
 import json
 from pathlib import Path
 import shutil
@@ -36,6 +38,19 @@ def salvar_mac(projeto, mac):
     print(f'MAC atualizado: {projeto.name} → {mac} (backup: {backup.name})')
 
 
+def atualizar_com_backup(arquivo, novo):
+    original = arquivo.read_text(encoding='utf-8')
+    if original == novo:
+        return
+    backup = arquivo.with_name(arquivo.name + '.bak')
+    n = 1
+    while backup.exists():
+        backup = arquivo.with_name(arquivo.name + f'.bak.{n}')
+        n += 1
+    shutil.copy2(arquivo, backup)
+    arquivo.write_text(novo, encoding='utf-8')
+
+
 def preparar(quantidade, destino, atualizar_firmware=False):
     if not 1 <= quantidade <= 32:
         raise ValueError('A quantidade total deve estar entre 1 e 32.')
@@ -68,7 +83,7 @@ def preparar(quantidade, destino, atualizar_firmware=False):
             (projeto / 'src/main.cpp').write_text(f'#define EQUIPAMENTO_ID "{nome}"\n' + fonte, encoding='utf-8')
             (projeto / 'diagram.json').write_text(json.dumps(circuito_instancia, indent=2) + '\n', encoding='utf-8')
             (projeto / 'platformio.ini').write_text(config, encoding='utf-8')
-            (projeto / 'wokwi.toml').write_text('[wokwi]\nversion = 1\nfirmware = ".pio/build/esp32dev/firmware.bin"\nelf = ".pio/build/esp32dev/firmware.elf"\n', encoding='utf-8')
+            (projeto / 'wokwi.toml').write_text('[wokwi]\nversion = 1\nfirmware = ".pio/build/esp32dev/firmware-merged.bin"\nelf = ".pio/build/esp32dev/firmware.elf"\n', encoding='utf-8')
             tarefas = {'version': '2.0.0', 'tasks': [{
                 'label': 'Compilar ESP32', 'type': 'shell', 'command': 'pio', 'args': ['run'],
                 'options': {'cwd': '${workspaceFolder}'}, 'problemMatcher': [],
@@ -94,6 +109,26 @@ def preparar(quantidade, destino, atualizar_firmware=False):
             shutil.copy2(arquivo, backup)
             arquivo.write_text(novo, encoding='utf-8')
             print(f'Firmware atualizado: {nome}; backup: {backup.name}')
+    for nome in nomes:
+        projeto = destino / nome
+        shutil.copytree(BASE / 'include', projeto / 'include', dirs_exist_ok=True)
+        shutil.copy2(BASE / 'gerar_imagem.py', projeto / 'gerar_imagem.py')
+        arquivo = projeto / 'platformio.ini'
+        cfg = configparser.ConfigParser(interpolation=None)
+        cfg.read(arquivo, encoding='utf-8')
+        scripts = cfg.get('env:esp32dev', 'extra_scripts', fallback='')
+        if 'post:gerar_imagem.py' not in scripts.split():
+            cfg.set('env:esp32dev', 'extra_scripts', scripts + '\npost:gerar_imagem.py')
+            output = io.StringIO(); cfg.write(output)
+            atualizar_com_backup(arquivo, output.getvalue())
+        arquivo = projeto / 'wokwi.toml'
+        atualizar_com_backup(arquivo, arquivo.read_text(encoding='utf-8').replace('firmware.bin', 'firmware-merged.bin'))
+        arquivo = projeto / 'diagram.json'
+        circuito_local = json.loads(arquivo.read_text(encoding='utf-8'))
+        attrs = placa_esp32(circuito_local).setdefault('attrs', {})
+        if attrs.get('firmwareOffset') != '0':
+            attrs['firmwareOffset'] = '0'
+            atualizar_com_backup(arquivo, json.dumps(circuito_local, indent=2) + '\n')
     for numero, nome in enumerate(nomes, 1):
         salvar_mac(destino / nome, f'02:00:00:00:00:{numero:02x}')
     return [destino / nome for nome in nomes]
@@ -130,8 +165,8 @@ def main():
             for projeto in projetos:
                 print(f'Compilando {projeto.name}...', flush=True)
                 subprocess.run([pio, 'run'], cwd=projeto, check=True)
-                if not (projeto / '.pio/build/esp32dev/firmware.bin').is_file():
-                    raise ValueError(f'{projeto.name}: compilação não gerou firmware.bin')
+                if not (projeto / '.pio/build/esp32dev/firmware-merged.bin').is_file():
+                    raise ValueError(f'{projeto.name}: compilação não gerou firmware-merged.bin')
         if args.abrir or args.abrir_todas:
             novos = [p for p in projetos if p.name not in existentes]
             for projeto in (projetos if args.abrir_todas else novos or projetos):
