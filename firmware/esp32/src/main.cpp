@@ -38,15 +38,6 @@ DallasTemperature sensors(&oneWire);
 
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 10000;
-// 1 para imprimir cada amostra; 0 mantém médias, JSON e resultados HTTP.
-#ifndef LOG_AMOSTRAS
-#define LOG_AMOSTRAS 0
-#endif
-// O gerador distribui as instâncias em quatro posições de 3 segundos.
-#ifndef ATRASO_INICIAL_MS
-#define ATRASO_INICIAL_MS 0
-#endif
-
 const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
 const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
 
@@ -110,7 +101,6 @@ void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
     somaTurbidez += leituraTurbidez;
     somaOrp += leituraOrp;
 
-#if LOG_AMOSTRAS
     Serial.print("[SENSOR] Amostra ");
     Serial.print(i + 1);
     Serial.print(": pH=");
@@ -119,7 +109,6 @@ void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
     Serial.print(leituraTurbidez, 2);
     Serial.print(" | ORP=");
     Serial.println(leituraOrp, 2);
-#endif
 
     if (i < NUM_AMOSTRAS - 1) {
         delay(TEMPO_ENTRE_AMOSTRAS);
@@ -152,13 +141,11 @@ float lerMediaTemperatura() {
     somaTemp += temp;
     amostrasValidas++;
 
-#if LOG_AMOSTRAS
     Serial.print("[SENSOR] Amostra ");
     Serial.print(i + 1);
     Serial.print(": Temperatura=");
     Serial.print(temp, 2);
     Serial.println(" C");
-#endif
   }
 
   if (amostrasValidas == 0) {
@@ -219,8 +206,8 @@ client.stop();
 }
 
 if (attempt < maxAttempts) {
-Serial.println("[HTTP] Aguardando 2 a 5 segundos antes da proxima tentativa...");
-delay(2000 + (ATRASO_INICIAL_MS / 3));
+Serial.println("[HTTP] Aguardando 2000 ms antes da proxima tentativa...");
+delay(2000);
 }
 }
 
@@ -229,7 +216,6 @@ return -1;
 }
 
 void sendReading() {
-  const unsigned long inicioColeta = millis();
 // Verificar se a hora foi sincronizada
 time_t nowSec = time(nullptr);
   if (nowSec < 1000000000) {
@@ -286,10 +272,7 @@ return;
 }
 }
 
-Serial.printf("[TEMPO] Coleta e preparo: %lu ms\n", millis() - inicioColeta);
-unsigned long inicioEnvio = millis();
 int result = enviarPostComRetry(payload);
-Serial.printf("[TEMPO] Envio (inclui tentativas): %lu ms\n", millis() - inicioEnvio);
 if (result < 0) {
 Serial.println("[HTTP] ERRO: falha ao enviar mesmo apos tentativas.");
 }
@@ -312,14 +295,9 @@ analogSetPinAttenuation(TURB_PIN, ADC_11db);
 analogSetPinAttenuation(ORP_PIN, ADC_11db);
 
 sensors.begin();
-// Evita polling contínuo OneWire durante a conversão; DallasTemperature usa
-// delay conforme a resolução do sensor, inclusive no protótipo físico.
-sensors.setCheckForConversion(false);
 Serial.println("[SETUP] Sensores inicializados.\n");
 
 Serial.println("[SETUP] Conectando ao Wi-Fi...");
-Serial.printf("[SETUP] Atraso inicial: %lu ms\n", static_cast<unsigned long>(ATRASO_INICIAL_MS));
-delay(ATRASO_INICIAL_MS);
 connectWiFi();
 
 Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");

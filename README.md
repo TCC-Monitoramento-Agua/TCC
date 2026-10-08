@@ -198,20 +198,3 @@ Response:
 
 ## Professor Orientador
 - Marcelo do Carmo Camargo Gaiotto
-
-
-### Otimização de múltiplas simulações Wokwi
-
-Depois de atualizar a branch, pare as simulações e execute na raiz:
-
-```powershell
-python firmware/esp32/preparar_wokwi.py --quantidade 4 --atualizar-firmware --compilar --abrir-todas
-```
-
-Inicie manualmente cada Wokwi. `--atualizar-firmware` substitui os fontes das instâncias existentes pela base e salva cada original em `src/main.cpp.bak` (ou sufixo numerado). Ajustes locais de URL e intervalo precisam ser reaplicados; sem a opção, os fontes antigos são preservados. Circuito e configurações dos sensores são preservados.
-
-A espera do DS18B20 usa `delay` pelo tempo de conversão correspondente à resolução, evitando consultas OneWire contínuas. As três amostras e a média continuam iguais. `LOG_AMOSTRAS` no início dos dois firmwares vale 0; use 1 para reativar detalhes por amostra. Médias, JSON e respostas HTTP continuam visíveis.
-
-O gerador define `ATRASO_INICIAL_MS` como 0, 3000, 6000 e 9000 nas primeiras quatro instâncias. Isso distribui a inicialização quando elas são iniciadas juntas; não sincroniza janelas nem garante separação permanente dos POSTs. As esperas entre tentativas também variam de 2 a 5 segundos por equipamento. No protótipo físico o atraso padrão é zero e pode ser definido por build flag. `SEND_INTERVAL = 10000` continua sendo a espera **após** terminar o ciclo, nos dois firmwares.
-
-Os logs `[TEMPO]` mostram a duração da coleta/preparo e do envio (incluindo tentativas), em milissegundos do ESP32. Para comparar desempenho, rode primeiro uma, depois duas e então quatro instâncias por cinco minutos de relógio real, com todas as abas visíveis. Compare a porcentagem de velocidade do Wokwi, os HTTP 200/201 e as falhas. HTTPS continua exigindo processamento; a otimização não garante quatro simuladores a 100% nem elimina falhas TLS. Essa validação precisa ser feita no computador que executa o Wokwi.

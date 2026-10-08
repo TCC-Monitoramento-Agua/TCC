@@ -30,15 +30,6 @@ const char* password = "oiboanoite";
 // Configuracoes
 unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 10000;
-// 1 para imprimir cada amostra; 0 mantém médias, JSON e resultados HTTP.
-#ifndef LOG_AMOSTRAS
-#define LOG_AMOSTRAS 0
-#endif
-// O gerador distribui as instâncias em quatro posições de 3 segundos.
-#ifndef ATRASO_INICIAL_MS
-#define ATRASO_INICIAL_MS 0
-#endif
-
 const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
 const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
 
@@ -92,14 +83,12 @@ float lerMediaPh() {
 
     somaPh += ph;
 
-#if LOG_AMOSTRAS
     Serial.print("[SENSOR] Amostra ");
     Serial.print(i + 1);
     Serial.print(": ADC=");
     Serial.print(leituraD34);
     Serial.print(" | pH=");
     Serial.println(ph, 2);
-#endif
 
     if (i < NUM_AMOSTRAS - 1) {
       delay(TEMPO_ENTRE_AMOSTRAS);
@@ -161,8 +150,8 @@ int enviarPostComRetry(const String& payload) {
     }
 
     if (attempt < maxAttempts) {
-      Serial.println("[HTTP] Nova tentativa em 2 a 5 segundos...");
-      delay(2000 + (ATRASO_INICIAL_MS / 3));
+      Serial.println("[HTTP] Nova tentativa em 2 segundos...");
+      delay(2000);
     }
   }
 
@@ -171,7 +160,6 @@ int enviarPostComRetry(const String& payload) {
 }
 
 void sendReading() {
-  const unsigned long inicioColeta = millis();
   time_t nowSec = time(nullptr);
 
   if (nowSec < 1000000000) {
@@ -226,10 +214,7 @@ void sendReading() {
     }
   }
 
-  Serial.printf("[TEMPO] Coleta e preparo: %lu ms\n", millis() - inicioColeta);
-  unsigned long inicioEnvio = millis();
   int result = enviarPostComRetry(payload);
-  Serial.printf("[TEMPO] Envio (inclui tentativas): %lu ms\n", millis() - inicioEnvio);
 
   if (result < 0) {
     Serial.println("[HTTP] ERRO: leitura nao enviada.");
@@ -248,8 +233,6 @@ void setup() {
 
   analogSetPinAttenuation(PH_PIN, ADC_11db);
 
-  Serial.printf("[SETUP] Atraso inicial: %lu ms\n", static_cast<unsigned long>(ATRASO_INICIAL_MS));
-  delay(ATRASO_INICIAL_MS);
   connectWiFi();
 
   Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
