@@ -3,7 +3,6 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <time.h>
-#include <esp_system.h>
 
 // Pino do potenciometro
 #define PH_PIN 34
@@ -60,20 +59,6 @@ void connectWiFi() {
   } else {
     Serial.println("\n[WiFi] ERRO ao conectar");
   }
-}
-
-// Gerado uma vez por medição; as tentativas HTTP reutilizam o mesmo JSON.
-String gerarLeituraId() {
-  uint8_t bytes[16];
-  esp_fill_random(bytes, sizeof(bytes));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  char id[37];
-  snprintf(id, sizeof(id),
-      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-      bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
-  return String(id);
 }
 
 String getTimestamp() {
@@ -203,8 +188,7 @@ void sendReading() {
   Serial.print(orp, 0);
   Serial.println(" mV");
 
-  StaticJsonDocument<512> doc;
-  doc["leitura_id"] = gerarLeituraId();
+  StaticJsonDocument<384> doc;
   doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
       ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
   doc["ph"] = ph;
