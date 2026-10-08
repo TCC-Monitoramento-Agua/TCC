@@ -33,6 +33,18 @@ class GeneratorTests(unittest.TestCase):
                 macs.add(mac)
             self.assertEqual(len(macs), n)
 
+    def test_update_preserves_backup_and_assigns_four_start_offsets(self):
+        projects = generator.preparar(4, self.destino)
+        source = projects[0] / 'src/main.cpp'
+        source.write_text(source.read_text() + '\n// ajuste local\n')
+        original = source.read_bytes()
+        generator.preparar(4, self.destino, atualizar_firmware=True)
+        self.assertEqual(source.with_name('main.cpp.bak').read_bytes(), original)
+        for i, project in enumerate(projects):
+            self.assertIn(f'#define ATRASO_INICIAL_MS {i * 3000}\n', (project/'src/main.cpp').read_text())
+        generator.preparar(4, self.destino, atualizar_firmware=True)
+        self.assertFalse(source.with_name('main.cpp.bak.1').exists())
+
     def test_old_diagram_is_repaired_with_backup_and_sensor_settings_preserved(self):
         project = generator.preparar(2, self.destino)[0]
         file = project / 'diagram.json'

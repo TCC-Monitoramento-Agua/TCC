@@ -36,7 +36,7 @@ def salvar_mac(projeto, mac):
     print(f'MAC atualizado: {projeto.name} → {mac} (backup: {backup.name})')
 
 
-def preparar(quantidade, destino):
+def preparar(quantidade, destino, atualizar_firmware=False):
     if not 1 <= quantidade <= 32:
         raise ValueError('A quantidade total deve estar entre 1 e 32.')
     nomes = [f'esp32-{i:03d}' for i in range(1, quantidade + 1)]
@@ -65,7 +65,7 @@ def preparar(quantidade, destino):
             projeto = Path(temporario) / nome
             (projeto / 'src').mkdir(parents=True)
             (projeto / '.vscode').mkdir()
-            (projeto / 'src/main.cpp').write_text(f'#define EQUIPAMENTO_ID "{nome}"\n' + fonte, encoding='utf-8')
+            (projeto / 'src/main.cpp').write_text(f'#define EQUIPAMENTO_ID "{nome}"\n#define ATRASO_INICIAL_MS {((numero - 1) % 4) * 3000}\n' + fonte, encoding='utf-8')
             (projeto / 'diagram.json').write_text(json.dumps(circuito_instancia, indent=2) + '\n', encoding='utf-8')
             (projeto / 'platformio.ini').write_text(config, encoding='utf-8')
             (projeto / 'wokwi.toml').write_text('[wokwi]\nversion = 1\nfirmware = ".pio/build/esp32dev/firmware.bin"\nelf = ".pio/build/esp32dev/firmware.elf"\n', encoding='utf-8')
@@ -78,6 +78,22 @@ def preparar(quantidade, destino):
         for nome in novos:
             shutil.move(str(Path(temporario) / nome), str(destino / nome))
             print(f'Criada: {nome}')
+    if atualizar_firmware:
+        for numero, nome in enumerate(nomes, 1):
+            if nome in novos:
+                continue
+            arquivo = destino / nome / 'src/main.cpp'
+            novo = f'#define EQUIPAMENTO_ID "{nome}"\n#define ATRASO_INICIAL_MS {((numero - 1) % 4) * 3000}\n' + fonte
+            if arquivo.read_text(encoding='utf-8') == novo:
+                continue
+            backup = arquivo.with_name('main.cpp.bak')
+            indice = 1
+            while backup.exists():
+                backup = arquivo.with_name(f'main.cpp.bak.{indice}')
+                indice += 1
+            shutil.copy2(arquivo, backup)
+            arquivo.write_text(novo, encoding='utf-8')
+            print(f'Firmware atualizado: {nome}; backup: {backup.name}')
     for numero, nome in enumerate(nomes, 1):
         salvar_mac(destino / nome, f'02:00:00:00:00:{numero:02x}')
     return [destino / nome for nome in nomes]
@@ -92,6 +108,7 @@ def main():
     parser.add_argument('--compilar', action='store_true', help='Compila o grupo com PlatformIO antes de abrir')
     parser.add_argument('--abrir', action='store_true', help='Abre novas instâncias no VS Code; se nenhuma for nova, abre o grupo')
     parser.add_argument('--abrir-todas', action='store_true', help='Abre todo o grupo no VS Code, mesmo ao adicionar instâncias')
+    parser.add_argument('--atualizar-firmware', action='store_true', help='Atualiza fontes existentes a partir da base, com backup dos ajustes locais')
     args = parser.parse_args()
     destino = args.saida.resolve()
     existentes = {p.name for p in destino.glob('esp32-*') if p.is_dir()}
@@ -108,7 +125,7 @@ def main():
     if (args.abrir or args.abrir_todas) and not code:
         parser.error('Comando code não encontrado no PATH. Abra as pastas manualmente ou configure o comando do VS Code.')
     try:
-        projetos = preparar(quantidade, destino)
+        projetos = preparar(quantidade, destino, atualizar_firmware=args.atualizar_firmware)
         if args.compilar:
             for projeto in projetos:
                 print(f'Compilando {projeto.name}...', flush=True)
