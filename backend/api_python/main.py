@@ -1,8 +1,10 @@
-# Versão de deploy: 1
+# Versão de deploy: 2
 # Incrementar este número em cada commit para alterar o arquivo monitorado pelo Render.
 
 import os
 import re
+import math
+from uuid import UUID
 from contextlib import closing
 from datetime import datetime
 from typing import Any
@@ -93,6 +95,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS leituras (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 equipamento_id VARCHAR(64) NULL,
+                leitura_id CHAR(36) NULL,
                 ph FLOAT NOT NULL,
                 turbidez FLOAT NOT NULL,
                 temperatura FLOAT NOT NULL,
@@ -109,6 +112,20 @@ def init_db() -> None:
             except mysql.connector.Error as error:
                 # Outro worker pode ter aplicado a migração ao mesmo tempo.
                 if error.errno != 1060:
+                    raise
+        cursor.execute("SHOW COLUMNS FROM leituras LIKE 'leitura_id'")
+        if cursor.fetchone() is None:
+            try:
+                cursor.execute("ALTER TABLE leituras ADD COLUMN leitura_id CHAR(36) NULL AFTER equipamento_id")
+            except mysql.connector.Error as error:
+                if error.errno != 1060:
+                    raise
+        cursor.execute("SHOW INDEX FROM leituras WHERE Key_name = 'uq_equipamento_leitura'")
+        if not cursor.fetchall():
+            try:
+                cursor.execute("ALTER TABLE leituras ADD UNIQUE KEY uq_equipamento_leitura (equipamento_id, leitura_id)")
+            except mysql.connector.Error as error:
+                if error.errno != 1061:
                     raise
         conn.commit()
         cursor.close()
@@ -131,6 +148,18 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
         or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", equipamento_id)
     ):
         return False, "equipamento_id deve ter de 1 a 64 caracteres: letras, números, _, ., : ou -"
+
+    if "leitura_id" in dados:
+        try:
+            if not isinstance(dados["leitura_id"], str):
+                raise ValueError()
+            UUID(dados["leitura_id"])
+        except (ValueError, AttributeError):
+            return False, "leitura_id deve ser um UUID válido"
+        if not equipamento_id:
+            return False, "equipamento_id é obrigatório quando leitura_id é informado"
+        if not dados.get("data_hora"):
+            return False, "data_hora é obrigatório quando leitura_id é informado"
 
     campos_obrigatorios = ["ph", "turbidez", "temperatura"]
 
@@ -237,6 +266,9 @@ def receber_leitura():
         temperatura = float(dados["temperatura"])
         orp = float(dados["orp"]) if "orp" in dados and dados["orp"] is not None else None
         data_hora = parse_data_hora(dados.get("data_hora"))
+        medicao_id = str(UUID(dados["leitura_id"])) if "leitura_id" in dados else None
+        if not all(math.isfinite(value) for value in (ph, turbidez, temperatura) + (() if orp is None else (orp,))):
+            raise ValueError("Os valores devem ser números finitos")
 
     except ValueError as error:
         return jsonify(
@@ -250,27 +282,51 @@ def receber_leitura():
         with closing(get_connection()) as conn:
             cursor = conn.cursor()
 
-            cursor.execute(
-                """
-                INSERT INTO leituras
-                (equipamento_id, ph, turbidez, temperatura, orp, data_hora)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (dados.get("equipamento_id"), ph, turbidez, temperatura, orp, data_hora),
-            )
-
-            conn.commit()
-            leitura_id = cursor.lastrowid
+            duplicada = False
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO leituras
+                    (equipamento_id, leitura_id, ph, turbidez, temperatura, orp, data_hora)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, temperatura, orp, data_hora),
+                )
+                conn.commit()
+                registro_id = cursor.lastrowid
+            except mysql.connector.Error as error:
+                conn.rollback()
+                if error.errno != 1062 or medicao_id is None:
+                    raise
+                cursor.execute(
+                    "SELECT id, ph, turbidez, temperatura, orp, data_hora FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
+                    (dados["equipamento_id"], medicao_id),
+                )
+                existente = cursor.fetchone()
+                if existente is None:
+                    raise
+                valores_iguais = all(
+                    (old is None and new is None) or
+                    (old is not None and new is not None and math.isclose(float(old), new, rel_tol=1e-6, abs_tol=1e-6))
+                    for old, new in zip(existente[1:5], (ph, turbidez, temperatura, orp))
+                )
+                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora:
+                    cursor.close()
+                    return jsonify({"status": "erro", "message": "leitura_id já utilizado com outros dados"}), 409
+                registro_id = existente[0]
+                duplicada = True
             cursor.close()
 
         return jsonify(
             {
                 "status": "ok",
-                "mensagem": "Leitura salva com sucesso",
-                "id": leitura_id,
-                "equipamento_id": dados.get("equipamento_id")
+                "mensagem": "Leitura já registrada" if duplicada else "Leitura salva com sucesso",
+                "id": registro_id,
+                "equipamento_id": dados.get("equipamento_id"),
+                "leitura_id": medicao_id,
+                "duplicada": duplicada,
             }
-        ), 201
+        ), 200 if duplicada else 201
 
     except mysql.connector.Error as erro:
         return jsonify(
@@ -302,7 +358,7 @@ def listar_leituras():
         with closing(get_connection()) as conn:
             cursor = conn.cursor(dictionary=True)
 
-            query = "SELECT id, equipamento_id, ph, turbidez, temperatura, orp, data_hora FROM leituras"
+            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, orp, data_hora FROM leituras"
             params = []
             if equipamento_id is not None:
                 query += " WHERE equipamento_id = %s"

@@ -33,6 +33,17 @@ class GeneratorTests(unittest.TestCase):
                 macs.add(mac)
             self.assertEqual(len(macs), n)
 
+    def test_explicit_update_preserves_custom_source_in_backup(self):
+        project = generator.preparar(1, self.destino)[0]
+        source = project / 'src/main.cpp'
+        source.write_text(source.read_text() + '\n// ajuste local\n')
+        original = source.read_bytes()
+        generator.preparar(1, self.destino, atualizar_firmware=True)
+        self.assertEqual(source.with_name('main.cpp.bak').read_bytes(), original)
+        self.assertIn('doc["leitura_id"] = gerarLeituraId()', source.read_text())
+        generator.preparar(1, self.destino, atualizar_firmware=True)
+        self.assertFalse(source.with_name('main.cpp.bak.1').exists())
+
     def test_old_diagram_is_repaired_with_backup_and_sensor_settings_preserved(self):
         project = generator.preparar(2, self.destino)[0]
         file = project / 'diagram.json'

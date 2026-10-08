@@ -16,6 +16,11 @@ const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 #define EQUIPAMENTO_ID ""
 #endif
 
+// Teste controlado: 1 reenvia cada leitura confirmada uma vez, sem gerar novo UUID.
+#ifndef TESTAR_DUPLICACAO
+#define TESTAR_DUPLICACAO 0
+#endif
+
 // NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
 // Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
 const char* TIME_ZONE = "BRT3";
@@ -61,6 +66,20 @@ void connectWiFi() {
   }
 }
 
+// Gerado uma vez por medição; as tentativas HTTP reutilizam o mesmo JSON.
+String gerarLeituraId() {
+  uint8_t bytes[16];
+  esp_fill_random(bytes, sizeof(bytes));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  char id[37];
+  snprintf(id, sizeof(id),
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+      bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+  return String(id);
+}
+
 String getTimestamp() {
   time_t nowSec = time(nullptr);
   struct tm timeinfo;
@@ -99,6 +118,10 @@ float lerMediaPh() {
 }
 
 int enviarPostComRetry(const String& payload) {
+  StaticJsonDocument<512> original;
+  if (deserializeJson(original, payload)) return -1;
+  const String leituraId = original["leitura_id"].as<String>();
+  const String equipamentoId = original["equipamento_id"].as<String>();
   const int maxAttempts = 3;
 
   for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -130,14 +153,28 @@ int enviarPostComRetry(const String& payload) {
       Serial.print("[RESPOSTA] ");
       Serial.println(response);
 
-      if (httpCode == 200 || httpCode == 201) {
+      StaticJsonDocument<512> confirmacao;
+      bool confirmou = (httpCode == 200 || httpCode == 201) &&
+          !deserializeJson(confirmacao, response) &&
+          confirmacao["status"].as<String>() == "ok" &&
+          confirmacao["leitura_id"].as<String>() == leituraId &&
+          confirmacao["equipamento_id"].as<String>() == equipamentoId &&
+          confirmacao["id"].is<uint64_t>() && confirmacao["id"].as<uint64_t>() > 0;
+      if (confirmou) {
         Serial.println("[HTTP] SUCESSO! Leitura registrada.");
         http.end();
         client.stop();
         return httpCode;
       }
 
-      if (httpCode < 0) {
+      if (httpCode == 409) {
+  Serial.println("[HTTP] CONFLITO: identificador reutilizado com dados diferentes");
+  http.end(); client.stop(); return httpCode;
+}
+if (httpCode == 200 || httpCode == 201) {
+  Serial.println("[HTTP] Resposta sem confirmação válida desta leitura; confira a versão da API");
+}
+if (httpCode < 0) {
         Serial.print("[HTTP] ERRO DE CONEXAO: ");
         Serial.println(http.errorToString(httpCode));
       } else {
@@ -189,6 +226,7 @@ void sendReading() {
   Serial.println(" mV");
 
   StaticJsonDocument<384> doc;
+  doc["leitura_id"] = gerarLeituraId();
   doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
       ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
   doc["ph"] = ph;
@@ -215,6 +253,12 @@ void sendReading() {
   }
 
   int result = enviarPostComRetry(payload);
+#if TESTAR_DUPLICACAO
+  if (result == 200 || result == 201) {
+    Serial.println("[TESTE] Reenviando exatamente o mesmo JSON para verificar duplicação");
+    enviarPostComRetry(payload);
+  }
+#endif
 
   if (result < 0) {
     Serial.println("[HTTP] ERRO: leitura nao enviada.");
