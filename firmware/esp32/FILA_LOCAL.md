@@ -4,7 +4,7 @@ Os dois firmwares usam a mesma fila LittleFS em `include/`. Capacidade inicial: 
 
 Coleta → UUID/horário/valores → gravação verificada na flash → POST → confirmação da API → ACK local persistido. Um POST sem confirmação mantém a leitura. A fila envia primeiro a mais antiga. Resposta perdida permite reenvio com o mesmo UUID; a API evita duplicação. Falha de ACK local também permite reenvio após recuperação. CRC detecta registros inválidos; a fila suspende operação sem formatar dados existentes.
 
-Um POST por tentativa, com espera progressiva de 5 até 60 segundos após falha; ao confirmar, o próximo pendente pode ser enviado após 250 ms. A coleta segue durante essas esperas e com Wi-Fi indisponível. Como esta versão não usa tarefas paralelas, o POST em andamento ainda bloqueia a coleta até retornar/expirar. Não garante aquisição a intervalo fixo durante um timeout. `SEND_INTERVAL = 10000` continua editável nos dois `main.cpp`; é a espera após finalizar a coleta, e chamadas HTTP podem atrasar o próximo ciclo. Vinte registros não representam 24 horas; autonomia depende do intervalo e dos atrasos.
+Até dois POSTs confirmados por ciclo para reduzir as pendências mesmo com novas coletas; após uma falha, o lote é interrompido. Há espera progressiva de 5 até 60 segundos após falha; ao confirmar, o próximo pendente pode ser enviado após 250 ms. A coleta segue durante essas esperas e com Wi-Fi indisponível. Como esta versão não usa tarefas paralelas, o POST em andamento ainda bloqueia a coleta até retornar/expirar. Não garante aquisição a intervalo fixo durante um timeout. `SEND_INTERVAL = 10000` continua editável nos dois `main.cpp`; é a espera após finalizar a coleta, e chamadas HTTP podem atrasar o próximo ciclo. Vinte registros não representam 24 horas; autonomia depende do intervalo e dos atrasos.
 
 Ao encher, a fila preserva as 20 pendências, rejeita novas medições e registra alerta: essas novas medições **podem ser perdidas**. Ao recuperar comunicação, o espaço volta a ser liberado. Não altere capacidade com pendências. Uma falha elétrica durante escrita pode provocar registro inválido e exigir recuperação; testes nativos não substituem testes físicos de energia.
 
@@ -21,7 +21,7 @@ python firmware/esp32/preparar_wokwi.py --quantidade 1 --atualizar-firmware --co
 
 Use uma instância primeiro. O fonte anterior fica em backup; ajustes locais de URL/intervalo precisam ser reaplicados. Deixe `TESTAR_DUPLICACAO` em 0. O gerador copia os headers, prepara `firmware-merged.bin` e o offset zero; a imagem inclui bootloader e a tabela **padrão** de partições, sem uma imagem de filesystem que apagaria a fila. No físico a partição padrão também é mantida. Não execute `erase` ou `uploadfs` com pendências.
 
-A primeira montagem de uma partição vazia pode imprimir erros do LittleFS, seguida de formatação apenas se todos os bytes estiverem apagados. Espere `[FILA] Recuperadas ...` para avaliar o resultado. Uma partição não vazia inválida não é formatada automaticamente.
+Antes de montar, uma partição completamente apagada é identificada como `[LOCAL] FLASH VAZIA` e preparada. Esse aviso significa que não há registros anteriores nessa flash. `[BOOT]` mostra o motivo de reset informado pelo ESP32; POWERON sozinho não identifica por que o Wokwi iniciou outra execução. Uma partição não vazia inválida não é formatada automaticamente.
 
 ## Testes manuais (sem parar ou recompilar durante a interrupção)
 
@@ -30,20 +30,22 @@ A primeira montagem de uma partição vazia pode imprimir erros do LittleFS, seg
 Inicie Wokwi e espere NTP sincronizar. Confira:
 
 ```text
-[FILA] Recuperadas 0 pendências; capacidade=20
-[FILA] Medição salva na flash; pendentes=1/20
-[FILA] Enviando pendência; [JSON] {...}
-[HTTP] Codigo HTTP: 201
-[FILA] Confirmada pela API; pendentes=0
+[LOCAL] Fila pronta | recuperadas=0 | capacidade=20
+[LEITURA] ... valores e horário ...
+[LOCAL] SALVA NO ESP32 | UUID=... | pendentes=1/20
+[ENVIO] Tentando enviar | UUID=... | pendentes=1
+[BANCO] CONFIRMADO | UUID=... | id=... | HTTP=201 | duplicada=não
+[LOCAL] Liberada da fila | UUID=... | pendentes=0
+[LOCAL] FILA VAZIA: todas as leituras pendentes foram confirmadas pelo banco
 ```
 
-Anote UUID e horário. No banco, deve haver uma linha para equipamento + UUID, com aqueles valores/horário. Se o POST anterior já foi salvo, HTTP 200 com `duplicada:true` é igualmente válido.
+Os detalhes por amostra e respostas completas ficam desligados; defina `LOG_DETALHADO=1` no topo do fonte para diagnóstico completo. Anote UUID e horário. No banco, deve haver uma linha para equipamento + UUID, com aqueles valores/horário. Se o POST anterior já foi salvo, HTTP 200 com `duplicada:true` é igualmente válido.
 
 ### 2. Queda da rede / Wi-Fi
 
 Com horário já sincronizado, interrompa o acesso à rede usado pela simulação, sem pará-la. O Wokwi-GUEST é uma rede virtual: desligar o Wi-Fi do PC pode cortar o acesso externo **sem** mudar `WiFi.status()` dentro do ESP32. Nesse caso espere falhas HTTP, não necessariamente o aviso Wi-Fi desconectado. Se não puder cortar a rede dessa forma, use o teste da API.
 
-Espere aparecerem pelo menos três medições salvas (não baseie o teste só em minutos reais, pois a simulação pode estar lenta). Anote UUIDs/horários nos JSONs de envio. As pendências devem crescer e nenhuma deve ser confirmada durante a falha. Religue a rede: o número deve cair até zero e o banco deve receber as medições antigas antes das novas, sem duplicações.
+Espere aparecerem pelo menos três medições salvas (não baseie o teste só em minutos reais, pois a simulação pode estar lenta). Anote UUIDs/horários nas linhas `[LEITURA]` e `[LOCAL] SALVA NO ESP32`. As pendências devem crescer e nenhuma deve ser confirmada durante a falha. Religue a rede: o número deve cair até zero e o banco deve receber as medições antigas antes das novas, sem duplicações.
 
 ### 3. API indisponível
 
@@ -61,7 +63,7 @@ Mantenha a comunicação interrompida até 20 pendências. A coleta seguinte dev
 
 ### 6. Reinício
 
-Com pendências de horário válido, reinicie e confira `[FILA] Recuperadas N pendências`. A persistência de reset/nova sessão depende do Wokwi; nas sessões anteriores uma nova execução voltou com flash vazia. Se recuperar zero, esse teste **não comprova** preservação após desligamento. Validação física de energia continua pendente. Nunca use parar/reabrir como parte dos testes 2–4.
+Com pendências de horário válido, reinicie e confira `[LOCAL] Fila pronta | recuperadas=N`. A persistência de reset/nova sessão depende do Wokwi; nas sessões anteriores uma nova execução voltou com flash vazia. Se recuperar zero, esse teste **não comprova** preservação após desligamento. Validação física de energia continua pendente. Nunca use parar/reabrir como parte dos testes 2–4.
 
 Para conferir cada leitura:
 

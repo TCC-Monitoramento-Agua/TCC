@@ -111,7 +111,9 @@ void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
   float somaTurbidez = 0.0;
   float somaOrp = 0.0;
 
-  Serial.println("\n[SENSOR] Iniciando 10 amostras...");
+  #if LOG_DETALHADO
+Serial.println("\n[SENSOR] Iniciando 10 amostras...");
+#endif
 
   for (int i = 0; i < NUM_AMOSTRAS; i++) {
     float leituraPh = mapAnalogToRange(PH_PIN, 6.5, 8.5);
@@ -122,6 +124,7 @@ void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
     somaTurbidez += leituraTurbidez;
     somaOrp += leituraOrp;
 
+#if LOG_DETALHADO
     Serial.print("[SENSOR] Amostra ");
     Serial.print(i + 1);
     Serial.print(": pH=");
@@ -130,6 +133,7 @@ void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
     Serial.print(leituraTurbidez, 2);
     Serial.print(" | ORP=");
     Serial.println(leituraOrp, 2);
+#endif
 
     if (i < NUM_AMOSTRAS - 1) {
         delay(TEMPO_ENTRE_AMOSTRAS);
@@ -146,7 +150,9 @@ float lerMediaTemperatura() {
   float somaTemp = 0.0;
   int amostrasValidas = 0;
 
-  Serial.println("\n[SENSOR] Iniciando 3 amostras de temperatura...");
+  #if LOG_DETALHADO
+Serial.println("\n[SENSOR] Iniciando 3 amostras de temperatura...");
+#endif
 
   for (int i = 0; i < NUM_AMOSTRAS_TEMP; i++) {
     sensors.requestTemperatures();
@@ -162,11 +168,13 @@ float lerMediaTemperatura() {
     somaTemp += temp;
     amostrasValidas++;
 
+#if LOG_DETALHADO
     Serial.print("[SENSOR] Amostra ");
     Serial.print(i + 1);
     Serial.print(": Temperatura=");
     Serial.print(temp, 2);
     Serial.println(" C");
+#endif
   }
 
   if (amostrasValidas == 0) {
@@ -181,77 +189,38 @@ int enviarPostComRetry(const String& payload) {
   if (deserializeJson(original, payload)) return -1;
   const String leituraId = original["leitura_id"].as<String>();
   const String equipamentoId = original["equipamento_id"].as<String>();
-const int maxAttempts = 1; // Repetições agendadas pela fila, sem bloquear em três POSTs seguidos.
-for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-Serial.print("[HTTP] Tentativa ");
-Serial.print(attempt);
-Serial.print("/" );
-Serial.println(maxAttempts);
-
-WiFiClientSecure client;
-client.setInsecure();
-HTTPClient http;
-http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
-http.setTimeout(HTTP_TIMEOUT_MS);
-
-Serial.println("[HTTP] Iniciando conexao HTTPS...");
-if (!http.begin(client, serverUrl)) {
-Serial.println("[HTTP] ✗ ERRO ao iniciar conexao HTTPS!");
-http.end();
-client.stop();
-} else {
-http.addHeader("Content-Type", "application/json");
-
-Serial.println("[HTTP] Enviando POST...");
-int httpCode = http.POST(payload);
-Serial.print("[HTTP] Codigo HTTP: ");
-Serial.println(httpCode);
-
-String response = http.getString();
-Serial.print("[RESPOSTA] ");
-Serial.println(response);
-
-StaticJsonDocument<512> confirmacao;
-      bool confirmou = (httpCode == 200 || httpCode == 201) &&
-          !deserializeJson(confirmacao, response) &&
-          confirmacao["status"].as<String>() == "ok" &&
-          confirmacao["leitura_id"].as<String>() == leituraId &&
-          confirmacao["equipamento_id"].as<String>() == equipamentoId &&
-          confirmacao["id"].is<uint64_t>() && confirmacao["id"].as<uint64_t>() > 0;
-      if (confirmou) {
-Serial.println("[HTTP] ✓ SUCESSO! Leitura registrada.");
-http.end();
-client.stop();
-return httpCode;
-}
-
-if (httpCode == 409) {
-  Serial.println("[HTTP] CONFLITO: identificador reutilizado com dados diferentes");
-  http.end(); client.stop(); return httpCode;
-}
-if (httpCode == 200 || httpCode == 201) {
-  Serial.println("[HTTP] Resposta sem confirmação válida desta leitura; confira a versão da API");
-}
-if (httpCode < 0) {
-Serial.print("[HTTP] ERRO DE CONEXAO: ");
-Serial.println(http.errorToString(httpCode));
-} else {
-Serial.print("[HTTP] ✗ FALHA! Esperado 200/201, recebido: ");
-Serial.println(httpCode);
-}
-
-http.end();
-client.stop();
-}
-
-if (attempt < maxAttempts) {
-Serial.println("[HTTP] Aguardando 2000 ms antes da proxima tentativa...");
-delay(2000);
-}
-}
-
-Serial.println("[HTTP] Tentativa falhou; leitura permanece na fila.");
-return -1;
+  WiFiClientSecure client;
+  client.setInsecure(); // Configuração HTTPS existente.
+  HTTPClient http;
+  http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  if (!http.begin(client, serverUrl)) {
+    Serial.println("[ENVIO] Não foi possível iniciar HTTPS; leitura continua no ESP32");
+    client.stop(); return -1;
+  }
+  http.addHeader("Content-Type", "application/json");
+  int codigo = http.POST(payload);
+  String resposta = codigo > 0 ? http.getString() : http.errorToString(codigo);
+#if LOG_DETALHADO
+  Serial.printf("[DEBUG] Resposta HTTP %d: %s\r\n", codigo, resposta.c_str());
+#endif
+  http.end(); client.stop();
+  StaticJsonDocument<512> ack;
+  bool confirmou = (codigo == 200 || codigo == 201) && !deserializeJson(ack, resposta) &&
+      ack["status"].as<String>() == "ok" &&
+      ack["leitura_id"].as<String>() == leituraId &&
+      ack["equipamento_id"].as<String>() == equipamentoId &&
+      ack["id"].is<uint64_t>() && ack["id"].as<uint64_t>() > 0;
+  if (confirmou) {
+    Serial.printf("[BANCO] CONFIRMADO | UUID=%s | id=%llu | HTTP=%d | duplicada=%s\r\n",
+        leituraId.c_str(), static_cast<unsigned long long>(ack["id"].as<uint64_t>()),
+        codigo, ack["duplicada"].as<bool>() ? "sim" : "não");
+    return codigo;
+  }
+  Serial.printf("[ENVIO] FALHOU | UUID=%s | HTTP=%d | %s\r\n", leituraId.c_str(), codigo,
+      codigo < 0 ? resposta.c_str() : codigo == 409 ? "UUID em conflito" :
+      (codigo == 200 || codigo == 201) ? "confirmação inválida" : "API não confirmou gravação");
+  return -1;
 }
 
 void sendReading() {
@@ -260,20 +229,6 @@ float temperature = lerMediaTemperatura();
 float ph, turbidez, orp;
 lerMediasAnalogicas(ph, turbidez, orp);
 
-Serial.println("\n[SENSOR] ===== MÉDIAS =====");
-Serial.print("[SENSOR] pH médio: ");
-Serial.println(ph, 2);
-Serial.print("[SENSOR] Turbidez média: ");
-Serial.println(turbidez, 2);
-Serial.print("[SENSOR] ORP médio: ");
-Serial.println(orp, 2);
-Serial.print("[SENSOR] Temperatura média: ");
-Serial.print(temperature, 2);
-Serial.println(" C");
-
-String timestamp = getTimestamp();
-
-// Criar JSON com ou sem data_hora dependendo da sincronizacao NTP
 StaticJsonDocument<1024> doc;
 doc["leitura_id"] = gerarLeituraId();
 doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
@@ -282,7 +237,7 @@ doc["ph"] = ph;
 doc["turbidez"] = turbidez;
 doc["temperatura"] = temperature;
 doc["orp"] = orp;
-doc["data_hora"] = timestamp;
+doc["data_hora"] = getTimestamp();
 
 guardarMedicaoLocal(doc);
 }
@@ -305,6 +260,7 @@ sensors.begin();
 Serial.println("[SETUP] Sensores inicializados.\n");
 
 Serial.println("[SETUP] Conectando ao Wi-Fi...");
+Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
 iniciarFilaLocal(gerarLeituraId());
 connectWiFi();
 

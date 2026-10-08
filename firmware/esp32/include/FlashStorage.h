@@ -1,29 +1,40 @@
 #pragma once
 #include <LittleFS.h>
 #include <esp_partition.h>
+#include <esp_littlefs.h>
+#include <sys/stat.h>
 #include "FilaCore.h"
 
 class FlashStorage : public ArmazenamentoFila {
   struct Ack { uint64_t sequencia; uint32_t magic; uint32_t crc; };
   const char* arquivo = "/fila-local.bin";
   size_t tamanhoArquivo = 0, tamanhoMaximo = 0;
+  bool existe(const char* nome) {
+    char caminho[96]; snprintf(caminho, sizeof(caminho), "/littlefs%s", nome);
+    struct stat info;
+    return stat(caminho, &info) == 0;
+  }
  public:
   bool montar(size_t capacidade) {
-    if (!LittleFS.begin(false, "/littlefs", 10, "spiffs")) {
-      // Só formata uma partição totalmente apagada, nunca uma fila corrompida.
-      const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
-      if (!part) return false;
-      uint8_t bytes[1024];
-      for (size_t pos = 0; pos < part->size; pos += sizeof(bytes)) {
-        size_t n = min(sizeof(bytes), part->size - pos);
-        if (esp_partition_read(part, pos, bytes, n) != ESP_OK) return false;
-        for (size_t i = 0; i < n; ++i) if (bytes[i] != 0xff) return false;
-      }
-      if (!LittleFS.format() || !LittleFS.begin(false, "/littlefs", 10, "spiffs")) return false;
+    // Verifica se a partição está apagada antes de montar: flash nova não é corrupção.
+    const esp_partition_t* part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
+    if (!part) return false;
+    uint8_t bytes[1024];
+    bool apagada = true;
+    for (size_t pos = 0; pos < part->size && apagada; pos += sizeof(bytes)) {
+      size_t n = min(sizeof(bytes), part->size - pos);
+      if (esp_partition_read(part, pos, bytes, n) != ESP_OK) return false;
+      for (size_t i = 0; i < n; ++i) if (bytes[i] != 0xff) { apagada = false; break; }
     }
+    if (apagada) {
+      Serial.println("[LOCAL] FLASH VAZIA: nova execução ou apagamento; sem pendências para recuperar");
+      if (esp_littlefs_format("spiffs") != ESP_OK) return false;
+    }
+    // Dados não vazios nunca são formatados em caso de erro.
+    if (!LittleFS.begin(false, "/littlefs", 10, "spiffs")) return false;
     tamanhoMaximo = capacidade * sizeof(RegistroFlash);
-    if (!LittleFS.exists(arquivo)) {
-      if (LittleFS.exists("/fila-local-ack.bin")) {
+    if (!existe(arquivo)) {
+      if (existe("/fila-local-ack.bin")) {
         Serial.println("[FILA] ERRO: arquivo de dados ausente, mas existe confirmação antiga");
         return false;
       }

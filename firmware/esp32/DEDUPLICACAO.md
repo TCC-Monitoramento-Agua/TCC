@@ -41,10 +41,10 @@ Abra essa pasta no VS Code e use `Wokwi: Start Simulator`. Após uma coleta conf
 
 Confira na serial:
 
-1. `[JSON]` com `leitura_id`.
-2. Primeiro envio: HTTP 201, `duplicada: false` e um `id`.
+1. `[LOCAL] SALVA NO ESP32` com UUID (JSON completo é opcional com `LOG_DETALHADO=1`).
+2. Primeiro envio: `[BANCO] CONFIRMADO`, HTTP 201, `duplicada=não` e um `id`.
 3. `[TESTE] Reenviando o mesmo JSON`.
-4. Segundo envio: HTTP 200, `duplicada: true` e **o mesmo id e UUID**.
+4. Segundo envio: `[BANCO] CONFIRMADO`, HTTP 200, `duplicada=sim` e **o mesmo id e UUID**.
 
 Se o primeiro POST tiver sido salvo, mas sua resposta se perder, uma tentativa seguinte já pode retornar 200. Isso também é esperado. Timeout ou erro TLS não aprovam o teste: aguarde dois envios confirmados e confira o banco.
 

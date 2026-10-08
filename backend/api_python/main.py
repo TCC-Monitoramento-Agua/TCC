@@ -1,4 +1,4 @@
-# Versão de deploy: 3
+# Versão de deploy: 4
 # Incrementar este número em cada commit para alterar o arquivo monitorado pelo Render.
 
 import os
