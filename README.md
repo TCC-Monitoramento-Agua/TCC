@@ -212,7 +212,7 @@ A API cria automaticamente a coluna `leitura_id` e a restrição única `(equipa
 
 Clientes antigos sem `leitura_id` continuam funcionando, mas não têm proteção contra duplicação. Com `leitura_id`, o horário de coleta deve ser enviado explicitamente. Publique a API nova antes de atualizar os dispositivos.
 
-Os dois firmwares agora implementam fila persistente em LittleFS, com coleta separada do envio. Consulte [FILA_FLASH.md](firmware/esp32/FILA_FLASH.md) para intervalo, capacidade, atualização das instâncias, testes e limitações do relógio/armazenamento.
+**Esta etapa ainda não implementa a fila na flash:** uma medição pode continuar sendo perdida após as tentativas falharem. A próxima etapa deve guardar o JSON antes do envio e removê-lo apenas após validar uma confirmação com o equipamento e UUID correspondentes.
 
 Instâncias Wokwi já geradas não recebem alterações do firmware base automaticamente. Para experimentar o firmware novo sem substituir ajustes existentes, gere em outro destino com `--saida` e pare o grupo anterior antes de iniciar os mesmos IDs no grupo novo.
 
