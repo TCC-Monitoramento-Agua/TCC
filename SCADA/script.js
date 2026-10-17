@@ -355,7 +355,7 @@ function atualizarCards(dados) {
     document.getElementById(
         "valorOrp"
     ).textContent =
-        dados.orp == null ? "--" : `${dados.orp.toFixed(0)} mV`;
+        dados.orp == null ? "--" : `${dados.orp.toFixed(0)} ppm`;
 
     document.getElementById(
         "valorTurbidez"
@@ -488,7 +488,7 @@ function atualizarTabelaHistorico(listaLeituras) {
                 </td>
 
                 <td>
-                    ${item.orp == null ? "--" : `${item.orp.toFixed(0)} mV`}
+                    ${item.orp == null ? "--" : `${item.orp.toFixed(0)} ppm`}
                 </td>
 
                 <td>
