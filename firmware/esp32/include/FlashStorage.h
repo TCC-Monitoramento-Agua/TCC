@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <LittleFS.h>
 #include <esp_partition.h>
 #include <esp_littlefs.h>
@@ -22,7 +23,7 @@ class FlashStorage : public ArmazenamentoFila {
     uint8_t bytes[1024];
     bool apagada = true;
     for (size_t pos = 0; pos < part->size && apagada; pos += sizeof(bytes)) {
-      size_t n = min(sizeof(bytes), part->size - pos);
+      size_t n = std::min<size_t>(sizeof(bytes), part->size - pos);
       if (esp_partition_read(part, pos, bytes, n) != ESP_OK) return false;
       for (size_t i = 0; i < n; ++i) if (bytes[i] != 0xff) { apagada = false; break; }
     }
