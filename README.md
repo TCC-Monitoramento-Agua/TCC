@@ -12,7 +12,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 20 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | Projeto separado; o código atual lê um potenciômetro para pH e usa valores fixos para temperatura, turbidez e TDS. Sensores reais e calibração ainda precisam ser integrados. |
+| Protótipo físico | Projeto separado; o pH está temporariamente desativado e envia 0.0; TDS é estimado pela leitura analógica, enquanto temperatura e turbidez ainda usam valores fixos. Sensores reais e calibração ainda precisam ser integrados. |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -341,7 +341,31 @@ pio run -d firmware/esp32/prototipo --target upload
 pio device monitor --baud 115200
 ```
 
-Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. O código atual mede pH por potenciômetro no GPIO 34; os demais valores físicos ainda são constantes. Não use isso como medição calibrada de água.
+Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. A leitura de pH está temporariamente desativada: o firmware envia 0.0 como valor provisório, sem ler o GPIO 34. O TDS é estimado a partir da leitura do GPIO 32. Temperatura (22.5 °C) e turbidez (2.3 NTU) ainda são constantes. O valor de pH pode disparar o alerta de acidez do SCADA; não representa uma medição real. Não use esses dados como medições calibradas de água.
+
+### TDS estimado no protótipo
+
+Pinagem definida para a montagem: **TDS no GPIO 32**, turbidez no GPIO 35 (reservado), pH no GPIO 34 (reservado) e DS18B20 no GPIO 14 (reservado). Os analógicos são ADC1, compatível com Wi-Fi. Nesta etapa, somente o TDS tem aquisição real implementada no protótipo.
+
+O módulo TDS é alimentado em 5 V e compartilha GND com o ESP32. O divisor está configurado para **10 kΩ entre a saída analógica do módulo e o GPIO 32**, e **15 kΩ entre o GPIO 32 e GND**. A posição dos resistores importa: o código reconstrói a tensão do módulo multiplicando a tensão do ADC por `(10 + 15) / 15`, aproximadamente 1.6667. Os valores ficam em `firmware/esp32/include/ConversaoTds.h`; ajuste-os se a montagem for diferente.
+
+O firmware lê 31 amostras com `analogReadMilliVolts`, espaçadas em 10 ms, e usa a mediana para reduzir o efeito de picos isolados. Aplica então a fórmula de referência da [biblioteca GravityTDS](https://github.com/DFRobot/GravityTDS/blob/master/GravityTDS.cpp), com fator de calibração 1 e conversão de condutividade para TDS pelo fator 0.5:
+
+```text
+V = tensão do módulo em volts, reconstruída após o divisor
+TDS estimado (ppm) = (133.42 × V³ − 255.86 × V² + 857.39 × V) × 0.5
+```
+
+Essa curva pressupõe resposta compatível com o módulo de referência e temperatura de **25 °C**. O sensor comprado ainda não foi validado contra uma solução padrão; o resultado é uma estimativa, não uma medição calibrada. Ainda não há compensação por temperatura medida. A temperatura fixa de 22.5 °C enviada pela API é provisória e não é usada no cálculo de TDS. O DS18B20 será integrado em outra etapa.
+
+A serial mostra `[TDS] ADC=... mV | módulo=... V | estimado=... ppm | referência=25.0 C (presumida)`. O valor estimado substitui os 450 ppm fixos e segue pelo campo `tds` para a fila, a API e o SCADA.
+
+Para conferir a conversão numérica em um computador com compilador C++:
+
+```sh
+g++ -std=c++11 tests/test_tds_conversion.cpp -o /tmp/test_tds_conversion
+/tmp/test_tds_conversion
+```
 
 A fila compartilha a implementação com a simulação. Não execute `erase`/`uploadfs` com pendências. A preservação após falta de energia precisa ser validada no hardware; reiniciar ou reabrir Wokwi pode começar uma flash vazia.
 

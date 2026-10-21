@@ -3,9 +3,12 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <algorithm>
+#include "ConversaoTds.h"
 
-// Pino do potenciometro
-#define PH_PIN 34
+constexpr uint8_t TDS_PIN = 32; // ADC1: pode ser usado com Wi-Fi ativo.
+constexpr size_t NUM_AMOSTRAS_TDS = 31;
+constexpr unsigned long INTERVALO_AMOSTRAS_TDS_MS = 10;
 
 // API
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
@@ -39,9 +42,6 @@ unsigned long lastSend = 0;
 const unsigned long SEND_INTERVAL = 10000;
 const uint16_t HTTP_TIMEOUT_MS = 60000; // Espera pela resposta da API
 const int32_t HTTP_CONNECT_TIMEOUT_MS = 15000; // Espera pela conexão
-
-const int NUM_AMOSTRAS = 10;
-const unsigned long TEMPO_ENTRE_AMOSTRAS = 500;
 
 void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
@@ -93,34 +93,20 @@ String getTimestamp() {
   return String(buf);
 }
 
-float lerMediaPh() {
-  float somaPh = 0.0;
-
-  #if LOG_DETALHADO
-Serial.println("\n[SENSOR] Iniciando 10 amostras de pH...");
-#endif
-
-  for (int i = 0; i < NUM_AMOSTRAS; i++) {
-    int leituraD34 = analogRead(PH_PIN);
-    float ph = (leituraD34 / 4095.0) * 14.0;
-
-    somaPh += ph;
-
-#if LOG_DETALHADO
-    Serial.print("[SENSOR] Amostra ");
-    Serial.print(i + 1);
-    Serial.print(": ADC=");
-    Serial.print(leituraD34);
-    Serial.print(" | pH=");
-    Serial.println(ph, 2);
-#endif
-
-    if (i < NUM_AMOSTRAS - 1) {
-      delay(TEMPO_ENTRE_AMOSTRAS);
-    }
+float lerTdsEstimado() {
+  uint32_t amostras[NUM_AMOSTRAS_TDS];
+  for (size_t i = 0; i < NUM_AMOSTRAS_TDS; ++i) {
+    amostras[i] = analogReadMilliVolts(TDS_PIN);
+    if (i + 1 < NUM_AMOSTRAS_TDS) delay(INTERVALO_AMOSTRAS_TDS_MS);
   }
-
-  return somaPh / NUM_AMOSTRAS;
+  std::sort(amostras, amostras + NUM_AMOSTRAS_TDS);
+  const uint32_t milivoltsAdc = amostras[NUM_AMOSTRAS_TDS / 2];
+  const float tensaoModuloV = tensaoModuloTds(milivoltsAdc);
+  const float tds = estimarTdsPpm(tensaoModuloV);
+  Serial.printf("[TDS] ADC=%lu mV | módulo=%.3f V | estimado=%.1f ppm | referência=%.1f C (presumida)\r\n",
+      static_cast<unsigned long>(milivoltsAdc), tensaoModuloV, tds,
+      TDS_TEMPERATURA_REFERENCIA_C);
+  return tds;
 }
 
 int enviarPostComRetry(const String& payload) {
@@ -163,13 +149,13 @@ int enviarPostComRetry(const String& payload) {
 }
 
 void sendReading() {
-  // pH obtido pelo potenciometro
-  float ph = lerMediaPh();
+  // pH temporariamente desativado; valor provisório, não é uma medição.
+  const float ph = 0.0;
 
-  // Valores simulados enquanto os sensores reais nao estao disponiveis
+  // Temperatura e turbidez ainda são valores simulados.
   float temperatura = 22.5;
   float turbidez = 2.3;
-  float tds = 450.0;
+  const float tds = lerTdsEstimado();
 
 StaticJsonDocument<1024> doc;
   doc["leitura_id"] = gerarLeituraId();
@@ -192,7 +178,8 @@ void setup() {
   Serial.println("BOOT ESP32 - PROTOTIPO FISICO");
   Serial.println("================================");
 
-  analogSetPinAttenuation(PH_PIN, ADC_11db);
+  analogReadResolution(12);
+  analogSetPinAttenuation(TDS_PIN, ADC_11db);
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
 iniciarFilaLocal(gerarLeituraId());
