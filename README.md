@@ -325,7 +325,7 @@ Configure um serviço web com:
 
 Gunicorn é utilizado no servidor Linux; no Windows use o procedimento de desenvolvimento com Python. `python main.py` habilita debug e não é o comando de produção.
 
-Configure Auto-Deploy conforme as opções do Render e seus filtros de caminhos. O comentário `# Versão de deploy: N` em `main.py` é uma convenção deste repositório; **não ativa deploy sozinho**. Um commit em `b.lucasdxl` não publica um serviço configurado para `main`. Confira o commit do deploy e `/status` antes de iniciar firmware novo.
+Configure Auto-Deploy conforme as opções do Render e seus filtros de caminhos. Um commit em `b.lucasdxl` não publica um serviço configurado para `main`. Confira o commit do deploy e `/status` antes de iniciar firmware novo.
 
 Após publicar sua API, ajuste as URLs do firmware e do SCADA. O CORS atual é aberto e o firmware usa `setInsecure()` no HTTPS, sem verificar o certificado do servidor. Autenticação e verificação de certificados precisam ser tratadas antes de considerar a solução pronta para operação real.
 
