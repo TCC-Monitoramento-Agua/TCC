@@ -8,7 +8,7 @@ Até dois POSTs confirmados por ciclo para reduzir as pendências mesmo com nova
 
 Ao encher, a fila preserva as 20 pendências, rejeita novas medições e registra alerta: essas novas medições **podem ser perdidas**. Ao recuperar comunicação, o espaço volta a ser liberado. Não altere capacidade com pendências. Uma falha elétrica durante escrita pode provocar registro inválido e exigir recuperação; testes nativos não substituem testes físicos de energia.
 
-Sem NTP na coleta, o registro conserva UUID, valores, boot e uptime. Quando NTP sincroniza no mesmo boot, o horário estimado é resolvido e persistido antes do POST, para que o reenvio seja idêntico. Se reiniciar antes de resolver esse horário, a pendência é preservada mas bloqueia o envio FIFO: não é possível reconstruir a hora real sem RTC ou tratamento explícito. Comece os testes de indisponibilidade depois de confirmar a sincronização NTP.
+Horário é obrigatório: após cada boot, o firmware aguarda a confirmação de sincronização do SNTP antes de ler os sensores ou criar medições. O timeout inicial de conexão não libera a coleta; o loop continua aguardando o relógio sincronizar. A gravação na fila também recusa relógio inválido e `data_hora` ausente/vazia. Após sincronizar, a perda de Wi-Fi/API não interrompe o relógio local nem a coleta. Não há mais armazenamento por boot/uptime, reconstrução posterior de horário ou arquivos de revisão. Conforme autorizado para esta correção, pendências sem horário de versões anteriores são descartadas ao chegar à frente da fila, com aviso explícito `[LOCAL] DESCARTADA`. A remoção persiste o avanço do ACK local; não simula uma confirmação do banco. As leituras com data permanecem na ordem normal de envio. Se o ACK falhar, o descarte não avança e a fila é suspensa. Nenhuma data é inventada. Comece os testes de indisponibilidade depois de confirmar a sincronização NTP.
 
 ## Preparação no Wokwi
 
@@ -75,3 +75,14 @@ WHERE equipamento_id = 'esp32-001'
 ```
 
 Deve haver uma linha, e o horário deve ser o da coleta, não o da reconexão. Guarde os logs desde a inicialização até o esvaziamento para identificar qualquer falha.
+
+## Teste da exigência de horário
+
+Na raiz, com um compilador C++ disponível:
+
+```sh
+g++ -std=c++11 -Wall -Wextra -pedantic tests/test_controle_horario.cpp -o /tmp/test_controle_horario
+/tmp/test_controle_horario
+```
+
+O teste verifica bloqueio antes da notificação de sincronização (mesmo com um valor plausível no relógio), liberação após sincronizar, recusa de data ausente/vazia e de relógio inválido, exigência de uma nova sincronização após reiniciar, descarte seletivo sem pular a ordem da fila, manutenção de leituras datadas e falha no ACK de descarte. A notificação real do SNTP e a aquisição na placa devem ser verificadas no teste físico.

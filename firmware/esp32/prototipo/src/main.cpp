@@ -149,6 +149,7 @@ int enviarPostComRetry(const String& payload) {
 }
 
 void sendReading() {
+  if (!coletaComHorarioPermitida()) return;
   // pH temporariamente desativado; valor provisório, não é uma medição.
   const float ph = 0.0;
 
@@ -182,29 +183,30 @@ void setup() {
   analogSetPinAttenuation(TDS_PIN, ADC_11db);
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
-iniciarFilaLocal(gerarLeituraId());
-connectWiFi();
+  iniciarFilaLocal();
+  connectWiFi();
 
   Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
+  sntp_set_time_sync_notification_cb(aoSincronizarHorario);
   configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
 
   time_t nowSec = time(nullptr);
   int attempts = 0;
 
-  while (nowSec < 1000000000 && attempts < 20) {
+  while (!relogioColeta.podeColetar(nowSec) && attempts < 20) {
     delay(500);
     nowSec = time(nullptr);
     attempts++;
   }
 
-  if (nowSec >= 1000000000) {
+  if (relogioColeta.podeColetar(nowSec)) {
     Serial.print("[SETUP] Horario de Brasilia sincronizado: ");
     Serial.println(getTimestamp());
   } else {
-    Serial.println("[SETUP] Falha ao sincronizar horario.");
+    Serial.println("[SETUP] Sem sincronização NTP: coleta suspensa até o relógio sincronizar.");
   }
 
-  Serial.println("[SETUP] Sistema pronto.\n");
+  Serial.println("[SETUP] Loop iniciado; coleta depende de horário sincronizado.\n");
 }
 
 void loop() {
@@ -215,7 +217,7 @@ void loop() {
     WiFi.begin(ssid, password);
   }
   if (millis() - lastSend >= SEND_INTERVAL) {
-    sendReading(); // Também coleta quando o Wi-Fi ou a API estão indisponíveis.
+    sendReading(); // Após sincronizar o relógio, continua coletando mesmo sem Wi-Fi/API.
     lastSend = millis();
   }
   processarFilaLocal(enviarPostComRetry);

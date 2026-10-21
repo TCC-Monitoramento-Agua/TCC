@@ -279,7 +279,7 @@ A fila cresce até 20 slots de 512 bytes, sem pré-alocar um arquivo grande. Cad
 
 O `id` auto incrementado identifica a linha no MySQL. O `leitura_id` UUID identifica a medição desde o ESP32. A restrição única `(equipamento_id, leitura_id)` impede inserções duplicadas. Há tolerância numérica de 1e-6 ao comparar reenvios devido ao tipo FLOAT.
 
-Sem NTP, valores ficam guardados com boot e uptime. Se sincronizar no mesmo boot, o horário estimado é persistido antes do envio. Reinício antes dessa resolução pode deixar a pendência sem horário confiável e bloquear a ordem de envio; não há RTC nesta versão.
+Após cada reinício, a coleta fica suspensa até o SNTP confirmar a sincronização do relógio. O firmware não lê os sensores nem gera uma nova medição enquanto isso não ocorrer. Antes de gravar na fila, também exige relógio válido e `data_hora` preenchida. Após sincronizar, continua coletando com o relógio local mesmo se perder Wi-Fi/API. Não há gravação sem horário nem reconstrução por uptime. Não há RTC externo nesta versão. Pendências sem horário criadas por versões anteriores são descartadas ao chegar à frente da fila, com aviso `[LOCAL] DESCARTADA`. As leituras com data são preservadas para envio normal.
 
 Firmware usa NTP.br e fuso `BRT3`; a API guarda DATETIME no horário de Brasília e devolve ISO 8601 com offset. O SCADA converte esse instante para o fuso do visitante.
 

@@ -108,4 +108,8 @@ class FilaPersistente {
     confirmado = sequencia;
     return true;
   }
+  bool descartarSemHorario(uint64_t sequencia, const char* dataHora) {
+    if (dataHora && dataHora[0] != '\0') return false;
+    return confirmar(sequencia);
+  }
 };
