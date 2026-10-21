@@ -1,4 +1,4 @@
-# Versão de deploy: 5
+# Versão de deploy: 6
 # Incrementar este número em cada commit para alterar o arquivo monitorado pelo Render.
 
 import os
@@ -99,7 +99,7 @@ def init_db() -> None:
                 ph FLOAT NOT NULL,
                 turbidez FLOAT NOT NULL,
                 temperatura FLOAT NOT NULL,
-                orp FLOAT NULL,
+                tds FLOAT NULL,
                 data_hora DATETIME NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
@@ -172,8 +172,8 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
         float(dados["turbidez"])
         float(dados["temperatura"])
 
-        if "orp" in dados and dados["orp"] is not None:
-            float(dados["orp"])
+        if "tds" in dados and dados["tds"] is not None:
+            float(dados["tds"])
 
         data_hora = dados.get("data_hora")
         if data_hora is not None and data_hora != "":
@@ -264,10 +264,10 @@ def receber_leitura():
         ph = float(dados["ph"])
         turbidez = float(dados["turbidez"])
         temperatura = float(dados["temperatura"])
-        orp = float(dados["orp"]) if "orp" in dados and dados["orp"] is not None else None
+        tds = float(dados["tds"]) if "tds" in dados and dados["tds"] is not None else None
         data_hora = parse_data_hora(dados.get("data_hora"))
         medicao_id = str(UUID(dados["leitura_id"])) if "leitura_id" in dados else None
-        if not all(math.isfinite(value) for value in (ph, turbidez, temperatura) + (() if orp is None else (orp,))):
+        if not all(math.isfinite(value) for value in (ph, turbidez, temperatura) + (() if tds is None else (tds,))):
             raise ValueError("Os valores devem ser números finitos")
 
     except ValueError as error:
@@ -287,10 +287,10 @@ def receber_leitura():
                 cursor.execute(
                     """
                     INSERT INTO leituras
-                    (equipamento_id, leitura_id, ph, turbidez, temperatura, orp, data_hora)
+                    (equipamento_id, leitura_id, ph, turbidez, temperatura, tds, data_hora)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, temperatura, orp, data_hora),
+                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, temperatura, tds, data_hora),
                 )
                 conn.commit()
                 registro_id = cursor.lastrowid
@@ -299,7 +299,7 @@ def receber_leitura():
                 if error.errno != 1062 or medicao_id is None:
                     raise
                 cursor.execute(
-                    "SELECT id, ph, turbidez, temperatura, orp, data_hora FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
+                    "SELECT id, ph, turbidez, temperatura, tds, data_hora FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
                     (dados["equipamento_id"], medicao_id),
                 )
                 existente = cursor.fetchone()
@@ -308,7 +308,7 @@ def receber_leitura():
                 valores_iguais = all(
                     (old is None and new is None) or
                     (old is not None and new is not None and math.isclose(float(old), new, rel_tol=1e-6, abs_tol=1e-6))
-                    for old, new in zip(existente[1:5], (ph, turbidez, temperatura, orp))
+                    for old, new in zip(existente[1:5], (ph, turbidez, temperatura, tds))
                 )
                 if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora:
                     cursor.close()
@@ -358,7 +358,7 @@ def listar_leituras():
         with closing(get_connection()) as conn:
             cursor = conn.cursor(dictionary=True)
 
-            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, orp, data_hora FROM leituras"
+            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, tds, data_hora FROM leituras"
             params = []
             if equipamento_id is not None:
                 query += " WHERE equipamento_id = %s"

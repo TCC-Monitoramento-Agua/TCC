@@ -68,7 +68,7 @@ Com pendências de horário válido, reinicie e confira `[LOCAL] Fila pronta | r
 Para conferir cada leitura:
 
 ```sql
-SELECT id, equipamento_id, leitura_id, data_hora, ph, turbidez, temperatura, orp
+SELECT id, equipamento_id, leitura_id, data_hora, ph, turbidez, temperatura, tds
 FROM leituras
 WHERE equipamento_id = 'esp32-001'
   AND leitura_id = 'UUID_COPIADO_DO_LOG';

@@ -32,9 +32,9 @@
   --cor-temp-bg: rgba(249, 115, 22, 0.14);
   --cor-temp-borda: rgba(249, 115, 22, 0.35);
 
-  --cor-orp: #10b981;
-  --cor-orp-bg: rgba(16, 185, 129, 0.14);
-  --cor-orp-borda: rgba(16, 185, 129, 0.35);
+  --cor-tds: #10b981;
+  --cor-tds-bg: rgba(16, 185, 129, 0.14);
+  --cor-tds-borda: rgba(16, 185, 129, 0.35);
 
   --cor-turb: #06b6d4;
   --cor-turb-bg: rgba(6, 182, 212, 0.14);
@@ -85,9 +85,9 @@
   --cor-temp-bg: rgba(234, 88, 12, 0.1);
   --cor-temp-borda: rgba(234, 88, 12, 0.25);
 
-  --cor-orp: #059669;
-  --cor-orp-bg: rgba(5, 150, 105, 0.1);
-  --cor-orp-borda: rgba(5, 150, 105, 0.25);
+  --cor-tds: #059669;
+  --cor-tds-bg: rgba(5, 150, 105, 0.1);
+  --cor-tds-borda: rgba(5, 150, 105, 0.25);
 
   --cor-turb: #0284c7;
   --cor-turb-bg: rgba(2, 132, 199, 0.1);
@@ -427,10 +427,10 @@ body {
   --cor-badge-bg: var(--cor-temp-bg);
   --cor-borda-icone: var(--cor-temp-borda);
 }
-.card-orp {
-  --cor-destaque: var(--cor-orp);
-  --cor-badge-bg: var(--cor-orp-bg);
-  --cor-borda-icone: var(--cor-orp-borda);
+.card-tds {
+  --cor-destaque: var(--cor-tds);
+  --cor-badge-bg: var(--cor-tds-bg);
+  --cor-borda-icone: var(--cor-tds-borda);
 }
 .card-turbidez {
   --cor-destaque: var(--cor-turb);

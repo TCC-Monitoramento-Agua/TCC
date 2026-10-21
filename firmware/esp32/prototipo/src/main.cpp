@@ -169,7 +169,7 @@ void sendReading() {
   // Valores simulados enquanto os sensores reais nao estao disponiveis
   float temperatura = 22.5;
   float turbidez = 2.3;
-  float orp = 450.0;
+  float tds = 450.0;
 
 StaticJsonDocument<1024> doc;
   doc["leitura_id"] = gerarLeituraId();
@@ -178,7 +178,7 @@ StaticJsonDocument<1024> doc;
   doc["ph"] = ph;
   doc["turbidez"] = turbidez;
   doc["temperatura"] = temperatura;
-  doc["orp"] = orp;
+  doc["tds"] = tds;
   doc["data_hora"] = getTimestamp();
 
   guardarMedicaoLocal(doc);

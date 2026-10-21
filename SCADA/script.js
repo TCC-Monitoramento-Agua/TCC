@@ -59,7 +59,7 @@ async function buscarDadosDaApi() {
             equipamento_id: leituraAPI.equipamento_id,
             ph: Number(leituraAPI.ph),
             temperatura: Number(leituraAPI.temperatura),
-            orp: leituraAPI.orp == null ? null : Number(leituraAPI.orp),
+            tds: leituraAPI.tds == null ? null : Number(leituraAPI.tds),
             turbidez: Number(leituraAPI.turbidez),
             created_at: leituraAPI.data_hora
         }));
@@ -353,9 +353,9 @@ function atualizarCards(dados) {
         `${dados.temperatura.toFixed(1)} °C`;
 
     document.getElementById(
-        "valorOrp"
+        "valorTds"
     ).textContent =
-        dados.orp == null ? "--" : `${dados.orp.toFixed(0)} ppm`;
+        dados.tds == null ? "--" : `${dados.tds.toFixed(0)} ppm`;
 
     document.getElementById(
         "valorTurbidez"
@@ -403,9 +403,9 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (dados.orp != null && dados.orp < 250) {
+    if (dados.tds != null && dados.tds < 250) {
         mensagens.push(
-            "ORP baixo. Possível baixa capacidade de oxidação."
+            "TDS abaixo da faixa configurada."
         );
     }
 
@@ -435,7 +435,7 @@ HISTÓRICO
 ====================================================
 */
 function limparLeituras() {
-    for (const id of ["valorPh", "valorTemperatura", "valorOrp",
+    for (const id of ["valorPh", "valorTemperatura", "valorTds",
                       "valorTurbidez", "dataLeitura"]) {
         document.getElementById(id).textContent = "--";
     }
@@ -488,7 +488,7 @@ function atualizarTabelaHistorico(listaLeituras) {
                 </td>
 
                 <td>
-                    ${item.orp == null ? "--" : `${item.orp.toFixed(0)} ppm`}
+                    ${item.tds == null ? "--" : `${item.tds.toFixed(0)} ppm`}
                 </td>
 
                 <td>

@@ -1,6 +1,6 @@
 # Monitoramento da qualidade da água de reservatórios
 
-Projeto de TCC para aquisição automática de pH, temperatura, turbidez e ORP com ESP32, envio em JSON para uma API Flask, armazenamento em MySQL e visualização em uma interface web SCADA.
+Projeto de TCC para aquisição automática de pH, temperatura, turbidez e TDS com ESP32, envio em JSON para uma API Flask, armazenamento em MySQL e visualização em uma interface web SCADA.
 
 Este guia descreve a implementação atual e os objetivos do documento **“lucasbalintvilar_Projeto_Fisico_assinado - DVK.pdf”**. O PDF foi fornecido como referência do projeto e não está incluído neste repositório. Funcionalidades previstas no documento não devem ser consideradas concluídas apenas por constarem na proposta.
 
@@ -8,11 +8,11 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 
 | Parte | Implementação |
 |---|---|
-| Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e ORP. Não reproduz calibração química de sensores reais. |
+| Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e TDS. Não reproduz calibração química de sensores reais. |
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 20 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | Projeto separado; o código atual lê um potenciômetro para pH e usa valores fixos para temperatura, turbidez e ORP. Sensores reais e calibração ainda precisam ser integrados. |
+| Protótipo físico | Projeto separado; o código atual lê um potenciômetro para pH e usa valores fixos para temperatura, turbidez e TDS. Sensores reais e calibração ainda precisam ser integrados. |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -176,7 +176,7 @@ $leitura = @{
   ph = 7.5
   turbidez = 2.3
   temperatura = 22.5
-  orp = 450.0
+  tds = 450.0
   data_hora = "2026-10-08T10:00:00-03:00"
 } | ConvertTo-Json
 Invoke-RestMethod -Uri "http://127.0.0.1:5000/leituras" -Method Post -ContentType "application/json" -Body $leitura
@@ -306,7 +306,11 @@ Resposta típica de gravação:
 }
 ```
 
-Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `temperatura`, `orp` e `data_hora`. pH, turbidez e temperatura são obrigatórios; ORP pode ser NULL. UUID exige equipamento e horário. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
+Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `temperatura`, `tds` e `data_hora`. pH, turbidez e temperatura são obrigatórios; TDS pode ser NULL. UUID exige equipamento e horário. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
+
+### Atualização do campo TDS
+
+TDS representa o total de sólidos dissolvidos, em **ppm**, no firmware, na API, no banco e no SCADA. O limite de alerta de 250 ppm continua provisório; a renomeação não define uma faixa de qualidade da água nem calibra os sensores.
 
 ## 8. Publicar no Render
 
