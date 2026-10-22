@@ -310,7 +310,7 @@ Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `tempe
 
 ### Atualização do campo TDS
 
-TDS representa o total de sólidos dissolvidos, em **ppm**, no firmware, na API, no banco e no SCADA. O limite de alerta de 250 ppm continua provisório; a renomeação não define uma faixa de qualidade da água nem calibra os sensores.
+TDS representa o total de sólidos dissolvidos, em **ppm**, no firmware, na API, no banco e no SCADA. A faixa configurada no SCADA é de **50 a 300 ppm**, incluindo os extremos; valores abaixo de 50 ppm ou acima de 300 ppm geram alerta. Esses limites foram escolhidos para o projeto e não certificam potabilidade nem substituem a calibração dos sensores.
 
 ## 8. Publicar no Render
 

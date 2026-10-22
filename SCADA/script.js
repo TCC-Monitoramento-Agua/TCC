@@ -403,9 +403,15 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (dados.tds != null && dados.tds < 250) {
+    if (dados.tds != null && dados.tds < 50) {
         mensagens.push(
             "TDS abaixo da faixa configurada."
+        );
+    }
+
+    if (dados.tds != null && dados.tds > 300) {
+        mensagens.push(
+            "TDS acima da faixa configurada."
         );
     }
 
