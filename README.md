@@ -12,7 +12,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 20 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | Projeto separado; o pH está temporariamente desativado e envia 0.0; TDS é estimado pela leitura analógica, enquanto temperatura e turbidez ainda usam valores fixos. Sensores reais e calibração ainda precisam ser integrados. |
+| Protótipo físico | Projeto separado; o pH está temporariamente desativado e envia 0.0; TDS e turbidez são estimados pelas leituras analógicas; temperatura ainda usa valor fixo. Sensores reais e calibração ainda precisam ser integrados. |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -341,11 +341,11 @@ pio run -d firmware/esp32/prototipo --target upload
 pio device monitor --baud 115200
 ```
 
-Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. A leitura de pH está temporariamente desativada: o firmware envia 0.0 como valor provisório, sem ler o GPIO 34. O TDS é estimado a partir da leitura do GPIO 32. Temperatura (22.5 °C) e turbidez (2.3 NTU) ainda são constantes. O valor de pH pode disparar o alerta de acidez do SCADA; não representa uma medição real. Não use esses dados como medições calibradas de água.
+Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. A leitura de pH está temporariamente desativada: o firmware envia 0.0 como valor provisório, sem ler o GPIO 34. O TDS é estimado a partir da leitura do GPIO 32 e a turbidez, do GPIO 35. A temperatura permanece provisoriamente em 22.5 °C, sem depender do DS18B20. O valor de pH pode disparar o alerta de acidez do SCADA; não representa uma medição real. Não use esses dados como medições calibradas de água.
 
 ### TDS estimado no protótipo
 
-Pinagem definida para a montagem: **TDS no GPIO 32**, turbidez no GPIO 35 (reservado), pH no GPIO 34 (reservado) e DS18B20 no GPIO 14 (reservado). Os analógicos são ADC1, compatível com Wi-Fi. Nesta etapa, somente o TDS tem aquisição real implementada no protótipo.
+Pinagem definida para a montagem: **TDS no GPIO 32**, turbidez no GPIO 35, pH no GPIO 34 (reservado) e DS18B20 no GPIO 14 (reservado). Os analógicos são ADC1, compatível com Wi-Fi. Nesta etapa, TDS e turbidez têm aquisição analógica real implementada no protótipo, com conversões estimadas.
 
 O módulo TDS é alimentado em 5 V e compartilha GND com o ESP32. O divisor está configurado para **10 kΩ entre a saída analógica do módulo e o GPIO 32**, e **15 kΩ entre o GPIO 32 e GND**. A posição dos resistores importa: o código reconstrói a tensão do módulo multiplicando a tensão do ADC por `(10 + 15) / 15`, aproximadamente 1.6667. Os valores ficam em `firmware/esp32/include/ConversaoTds.h`; ajuste-os se a montagem for diferente.
 
@@ -365,6 +365,30 @@ Para conferir a conversão numérica em um computador com compilador C++:
 ```sh
 g++ -std=c++11 tests/test_tds_conversion.cpp -o /tmp/test_tds_conversion
 /tmp/test_tds_conversion
+```
+
+### Turbidez estimada no protótipo
+
+Ligue a saída **analógica** do módulo ao **GPIO 35** pelo divisor: **10 kΩ entre a saída do módulo e o GPIO**, **15 kΩ entre o GPIO e GND**. Alimente o módulo em 5 V e use GND comum. Se a placa tiver seletor analógico/digital, use o modo analógico. Os valores dos resistores ficam em `firmware/esp32/include/ConversaoTurbidez.h`.
+
+O firmware lê 31 amostras em milivolts, espaçadas em 10 ms, usa a mediana e reconstrói a tensão original multiplicando por `(10 + 15) / 15`. Substitui os 2.3 NTU fixos pela estimativa abaixo:
+
+```text
+V = tensão original do módulo em volts, antes do divisor
+NTU estimado = −1120.4 × V² + 5742.3 × V − 4352.9
+```
+
+É um ajuste quadrático de referência associado a módulos do tipo SEN0189, adotado como aproximação para os ensaios. A descrição da Eletrogate não fornece essa curva e a correspondência com o sensor comprado ainda não foi confirmada. A fórmula não é uma calibração e não garante medição precisa em NTU. O recipiente, as reflexões internas, a posição da sonda e a iluminação também influenciam a resposta; não há fator de correção calculado a partir da garrafa.
+
+O código utiliza a curva apenas para tensões do módulo entre **2.5 e 4.5 V**. Valores negativos do polinômio no extremo de água clara são limitados a zero. Fora desse intervalo, a serial mostra a tensão e `sem estimativa`, sem inventar um valor NTU; aquela medição completa não é criada, enquanto as pendências válidas continuam sendo enviadas. A curva pode gerar estimativas acima dos **1000 NTU** informados pela loja: nesse caso há aviso explícito na serial, e o valor de referência não é recortado artificialmente para 1000 nem deve ser tratado como medição validada nessa faixa.
+
+A serial mostra `[TURBIDEZ] ADC=... mV | módulo=... V | estimado=... NTU`. O valor segue pelo campo `turbidez` para a fila, API e SCADA. O TDS continua com referência presumida de 25 °C, e a temperatura enviada continua provisoriamente em 22.5 °C; a integração do DS18B20 foi adiada.
+
+Para testar a conversão numérica:
+
+```sh
+g++ -std=c++11 tests/test_turbidez_conversion.cpp -o /tmp/test_turbidez_conversion
+/tmp/test_turbidez_conversion
 ```
 
 A fila compartilha a implementação com a simulação. Não execute `erase`/`uploadfs` com pendências. A preservação após falta de energia precisa ser validada no hardware; reiniciar ou reabrir Wokwi pode começar uma flash vazia.

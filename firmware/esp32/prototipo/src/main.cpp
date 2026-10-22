@@ -5,10 +5,14 @@
 #include <time.h>
 #include <algorithm>
 #include "ConversaoTds.h"
+#include "ConversaoTurbidez.h"
 
 constexpr uint8_t TDS_PIN = 32; // ADC1: pode ser usado com Wi-Fi ativo.
+constexpr uint8_t TURBIDEZ_PIN = 35; // ADC1: pode ser usado com Wi-Fi ativo.
 constexpr size_t NUM_AMOSTRAS_TDS = 31;
 constexpr unsigned long INTERVALO_AMOSTRAS_TDS_MS = 10;
+constexpr size_t NUM_AMOSTRAS_TURBIDEZ = 31;
+constexpr unsigned long INTERVALO_AMOSTRAS_TURBIDEZ_MS = 10;
 
 // API
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
@@ -109,6 +113,29 @@ float lerTdsEstimado() {
   return tds;
 }
 
+float lerTurbidezEstimada() {
+  uint32_t amostras[NUM_AMOSTRAS_TURBIDEZ];
+  for (size_t i = 0; i < NUM_AMOSTRAS_TURBIDEZ; ++i) {
+    amostras[i] = analogReadMilliVolts(TURBIDEZ_PIN);
+    if (i + 1 < NUM_AMOSTRAS_TURBIDEZ) delay(INTERVALO_AMOSTRAS_TURBIDEZ_MS);
+  }
+  std::sort(amostras, amostras + NUM_AMOSTRAS_TURBIDEZ);
+  const uint32_t milivoltsAdc = amostras[NUM_AMOSTRAS_TURBIDEZ / 2];
+  const float tensaoModuloV = tensaoModuloTurbidez(milivoltsAdc);
+  const float turbidez = estimarTurbidezNtu(tensaoModuloV);
+  if (std::isfinite(turbidez)) {
+    Serial.printf("[TURBIDEZ] ADC=%lu mV | módulo=%.3f V | estimado=%.1f NTU\r\n",
+        static_cast<unsigned long>(milivoltsAdc), tensaoModuloV, turbidez);
+    if (turbidez > 1000.0f) {
+      Serial.println("[TURBIDEZ] AVISO: estimativa acima da faixa de 0-1000 NTU informada pela loja");
+    }
+  } else {
+    Serial.printf("[TURBIDEZ] ADC=%lu mV | módulo=%.3f V | sem estimativa: fora da curva de referência (2.5-4.5 V)\r\n",
+        static_cast<unsigned long>(milivoltsAdc), tensaoModuloV);
+  }
+  return turbidez;
+}
+
 int enviarPostComRetry(const String& payload) {
   StaticJsonDocument<512> original;
   if (deserializeJson(original, payload)) return -1;
@@ -153,10 +180,14 @@ void sendReading() {
   // pH temporariamente desativado; valor provisório, não é uma medição.
   const float ph = 0.0;
 
-  // Temperatura e turbidez ainda são valores simulados.
+  // Temperatura ainda é um valor provisório, sem leitura do DS18B20.
   float temperatura = 22.5;
-  float turbidez = 2.3;
   const float tds = lerTdsEstimado();
+  const float turbidez = lerTurbidezEstimada();
+  if (!std::isfinite(turbidez)) {
+    Serial.println("[LEITURA] Medição não criada: conversão de turbidez indisponível");
+    return;
+  }
 
 StaticJsonDocument<1024> doc;
   doc["leitura_id"] = gerarLeituraId();
@@ -181,6 +212,7 @@ void setup() {
 
   analogReadResolution(12);
   analogSetPinAttenuation(TDS_PIN, ADC_11db);
+  analogSetPinAttenuation(TURBIDEZ_PIN, ADC_11db);
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();
