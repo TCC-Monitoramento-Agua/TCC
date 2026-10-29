@@ -65,6 +65,21 @@ class FilaPersistente {
   size_t pendentes() const { return static_cast<size_t>(ultimo - confirmado); }
   bool saudavel() const { return pronta; }
   bool cheia() const { return pendentes() >= capacidade; }
+  // Destino vazio: copia apenas pendências sem alterar o arquivo/ACK de origem.
+  // O ACK do destino é publicado por último, marcando a conclusão da cópia.
+  bool copiarPendentesPara(ArmazenamentoFila& destino, size_t capacidadeDestino) {
+    if (!pronta || pendentes() > capacidadeDestino) return false;
+    for (uint64_t i = 0; i < pendentes(); ++i) {
+      const uint64_t seq = confirmado + 1 + i;
+      RegistroFlash r, teste;
+      if (!storage.ler((seq - 1) % capacidade, r) || !valido(r) || r.sequencia != seq) return false;
+      r.sequencia = i + 1;
+      r.crc = crcFila(&r, offsetof(RegistroFlash, crc));
+      if (!destino.gravar(static_cast<size_t>(i), r) ||
+          !destino.ler(static_cast<size_t>(i), teste) || memcmp(&r, &teste, sizeof(r))) return false;
+    }
+    return destino.gravarConfirmacao(0);
+  }
   bool salvar(const char* dados, size_t tamanho) {
     if (!pronta || cheia() || !tamanho || tamanho >= sizeof(RegistroFlash::dados)) return false;
     RegistroFlash r = {};

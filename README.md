@@ -11,7 +11,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e TDS. Não reproduz calibração química de sensores reais. |
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
-| Falhas de envio | Fila LittleFS de 20 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
+| Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
 | Protótipo físico | Projeto separado; o pH está temporariamente desativado e envia 0.0; TDS e turbidez são estimados pelas leituras analógicas; temperatura ainda usa valor fixo. Sensores reais e calibração ainda precisam ser integrados. |
 
 ```text
@@ -268,14 +268,14 @@ Configurações alteradas pelo gerador também podem ganhar backups. Não execut
 | Amostras analógicas | `NUM_AMOSTRAS` / `TEMPO_ENTRE_AMOSTRAS`, em cada firmware | 10 amostras; 500 ms entre elas |
 | Timeout HTTP | `HTTP_TIMEOUT_MS`, em cada firmware | 60000 ms |
 | Timeout de conexão | `HTTP_CONNECT_TIMEOUT_MS`, em cada firmware | 15000 ms |
-| Capacidade local | `CAPACIDADE_FILA`, em `include/FilaLocal.h` | 20 leituras |
+| Capacidade local | `CAPACIDADE_FILA`, em `include/FilaLocal.h` | 1.000 leituras |
 | Reenvio após falha | `RETRY_INICIAL_MS` / `RETRY_MAXIMO_MS`, no mesmo header | 5 até 60 segundos |
 | Envio de pendências | `ENVIOS_POR_CICLO`, no mesmo header | Até 2 por ciclo |
 | Consulta SCADA | `INTERVALO_ATUALIZACAO`, em `SCADA/script.js` | 5000 ms após consulta |
 
 Esses valores não representam um envio obrigatório a cada 10 segundos. Amostragem e POST somam tempo; os envios são bloqueantes e podem atrasar novas coletas. No Wokwi, tempo simulado e tempo real também podem diferir.
 
-A fila cresce até 20 slots de 512 bytes, sem pré-alocar um arquivo grande. Cada leitura é salva antes do POST e só liberada após confirmação válida. Ao encher, preserva pendências e rejeita novas leituras, que podem ser perdidas. Não altere capacidade com pendências.
+A fila cresce até 1.000 slots de 512 bytes: **512.000 bytes (500 KiB)** de registros, além dos metadados do LittleFS. Com intervalo efetivo de 10 segundos e fila inicialmente vazia, isso corresponde a aproximadamente **2 h 46 min 40 s** de leituras sem envio; é uma estimativa de armazenamento, não de bateria, e os POSTs podem atrasar a coleta. Cada leitura é salva antes do POST e só liberada após confirmação válida. Ao encher, preserva pendências e rejeita novas leituras, que podem ser perdidas. Esta versão transfere automaticamente as pendências da fila antiga de 20 posições, mantendo UUIDs e horários. Outras mudanças de capacidade exigem migração própria. Veja os testes, cálculos e referências em [FILA_LOCAL.md](firmware/esp32/FILA_LOCAL.md).
 
 O `id` auto incrementado identifica a linha no MySQL. O `leitura_id` UUID identifica a medição desde o ESP32. A restrição única `(equipamento_id, leitura_id)` impede inserções duplicadas. Há tolerância numérica de 1e-6 ao comparar reenvios devido ao tipo FLOAT.
 

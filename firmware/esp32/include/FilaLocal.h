@@ -21,7 +21,7 @@ const char* motivoReset() {
 }
 
 // Limite de registros, independente da frequência de coleta.
-const size_t CAPACIDADE_FILA = 20;
+const size_t CAPACIDADE_FILA = 1000;
 const uint32_t RETRY_INICIAL_MS = 5000;
 const uint32_t RETRY_MAXIMO_MS = 60000;
 FlashStorage storageFila;
