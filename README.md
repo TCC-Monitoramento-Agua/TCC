@@ -353,6 +353,10 @@ A turbidez física utiliza a **queda percentual do sinal**, com referência inic
 
 A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se um sensor ativo tiver leitura inválida, a nova medição completa é recusada; as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 
+### Logs locais sem USB
+
+O físico disponibiliza **`http://IP_DO_ESP32/`** com leituras, ADC/tensão, situação da fila, resultado dos envios e logs de aplicação. O endereço aparece na serial como `[DIAGNOSTICO] Acesse http://.../`; anote-o após a gravação e acesse pelo celular na mesma rede. Funciona com alimentação pela bateria e sem depender da API. São mantidas as últimas 80 linhas em RAM, com atualização automática, pausa e download do texto exibido. A página roda em tarefa separada para atender durante os POSTs. O acesso depende da comunicação permitida pela rede/hotspot. Detalhes e limitações em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md#diagnóstico-local-pelo-celular).
+
 ## 10. Validação alinhada ao documento do TCC
 
 As seções de testes e análise de riscos do PDF (páginas 35–37) preveem falhas de comunicação, preservação de leituras, dados inválidos, operação contínua e comparação dos sensores com referências.

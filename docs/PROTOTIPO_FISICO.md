@@ -55,7 +55,33 @@ A fila de 1.000 registros, as regras de horário e a deduplicação permanecem. 
 
 Se um dos três sensores ativos produzir leitura inválida, a nova medição completa não é criada, pois a API exige pH, temperatura e turbidez. Os diagnósticos dos três continuam sendo impressos e o processamento das pendências não é interrompido. Isso evita inserir zeros ou valores fixos como se fossem medições reais.
 
-## Verificações locais
+## Diagnóstico local pelo celular
+
+O firmware físico disponibiliza uma página em **`http://IP_DO_ESP32/`**, na porta 80. Após gravar esta versão, abra o monitor serial uma vez e anote a linha `[DIAGNOSTICO] Acesse http://.../`. Por exemplo, se o IP atribuído for `172.20.10.14`, o endereço é `http://172.20.10.14/`. O IP depende da rede e pode mudar ao reconectar; não foi acrescentada descoberta por nome `.local` para manter o firmware dentro da partição atual.
+
+Depois, a página pode ser acessada com o dispositivo alimentado pela bateria, sem USB. O celular/computador precisa alcançar o ESP32 na mesma rede local. Hotspots podem restringir o acesso entre dispositivos; se o endereço não abrir, conferir o IP e testar em uma rede Wi-Fi que permita essa comunicação. A página não depende do Render, da API ou do SCADA para mostrar diagnósticos.
+
+A tela apresenta pH, temperatura, turbidez relativa, ADCs, tensões na escala de calibração, referência de turbidez, idade/validade da última leitura, situação do relógio, integridade da fila, quantidade de pendências e resultado HTTP do envio. Sensor inválido aparece como indisponível, sem substituir pelo último valor válido. O código também passou a mostrar no log o corpo da resposta de erro da API, limitado a 300 caracteres.
+
+Os logs de aplicação enviados ao `Serial` continuam saindo na UART e são copiados para um buffer circular em **RAM**, com as últimas **80 linhas**, de até 255 bytes cada. Linhas maiores são truncadas sem dividir um caractere UTF-8. O navegador consulta as novidades aproximadamente a cada segundo, mantém até 500 linhas na tela, detecta uma nova sessão após reinício e informa se registros antigos saíram do buffer. São disponibilizados pausa, limpeza somente da tela, rolagem automática e download do texto exibido.
+
+Os logs não são gravados na flash e desaparecem ao desligar/reiniciar; não substituem a fila persistente. Mensagens internas de bibliotecas/SDK que não passam pelo `Serial` da aplicação e informações de falha anteriores ao reset não são prometidas pela página. Os controles não apagam a fila, não alteram calibração e não acionam sensores.
+
+O servidor HTTP local roda em uma tarefa FreeRTOS separada do loop que realiza aquisição e POST. Isso evita que um timeout da API bloqueie o atendimento da página. Leituras/status são compartilhados com sincronização e publicados sem acessar o estado da fila diretamente pela tarefa HTTP. A primeira disponibilização ocorre após a tentativa inicial de conexão Wi-Fi; o serviço acompanha desconexões e reconexões.
+
+Rotas locais, apenas para consulta: `GET /` (HTML) e `GET /api/diagnostico?apos=N&sessao=S` (estado e logs novos). O servidor não oferece operações de apagar arquivos ou alterar configuração. A implementação usa WiFiServer e mantém a tabela de partições existente; não requer `erase` nem `uploadfs`.
+
+### Verificações da página e do buffer
+
+```sh
+g++ -std=c++11 -Wall -Wextra -Werror tests/test_log_diagnostico.cpp -o /tmp/test_log_diagnostico
+/tmp/test_log_diagnostico
+node tests/test_diagnostico_pagina.js
+```
+
+Os testes cobrem retenção e sobrescrita do buffer, fragmentos de linhas, limites e truncamento UTF-8; renderização dos dados, indisponibilidade de sensores, cursores sem duplicação, reinício, limite de linhas no navegador, pausa e falha de rede. O acesso a partir de celular e a resposta durante um timeout real da API precisam ser conferidos no dispositivo físico.
+
+## Verificações da aquisição
 
 ```sh
 g++ -std=c++11 -Wall -Wextra -Werror tests/test_sensores_fisicos.cpp -o /tmp/test_sensores_fisicos
