@@ -95,12 +95,20 @@ def init_db() -> None:
                 leitura_id CHAR(36) NULL,
                 ph FLOAT NOT NULL,
                 turbidez FLOAT NOT NULL,
+                turbidez_unidade VARCHAR(24) NOT NULL DEFAULT 'ntu',
                 temperatura FLOAT NOT NULL,
                 tds FLOAT NULL,
                 data_hora DATETIME NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        cursor.execute("SHOW COLUMNS FROM leituras LIKE 'turbidez_unidade'")
+        if cursor.fetchone() is None:
+            try:
+                cursor.execute("ALTER TABLE leituras ADD COLUMN turbidez_unidade VARCHAR(24) NOT NULL DEFAULT 'ntu' AFTER turbidez")
+            except mysql.connector.Error as error:
+                if error.errno != 1060:
+                    raise
         # Compatibilidade com bancos existentes: preserva leituras antigas como NULL.
         cursor.execute("SHOW COLUMNS FROM leituras LIKE 'equipamento_id'")
         if cursor.fetchone() is None:
@@ -142,9 +150,9 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
     equipamento_id = dados.get("equipamento_id")
     if equipamento_id is not None and (
         not isinstance(equipamento_id, str)
-        or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", equipamento_id)
+        or not re.fullmatch(r"[\w.:-]{1,64}", equipamento_id)
     ):
-        return False, "equipamento_id deve ter de 1 a 64 caracteres: letras, números, _, ., : ou -"
+        return False, "equipamento_id deve ter de 1 a 64 caracteres: letras (inclusive acentuadas), números, _, ., : ou -"
 
     if "leitura_id" in dados:
         try:
@@ -158,7 +166,10 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
         if not dados.get("data_hora"):
             return False, "data_hora é obrigatório quando leitura_id é informado"
 
-    campos_obrigatorios = ["ph", "turbidez", "temperatura"]
+    if "turbidez" in dados and "turbidez_relativa" in dados:
+        return False, "Informe turbidez em NTU ou turbidez_relativa, não ambos"
+    campo_turbidez = "turbidez_relativa" if "turbidez_relativa" in dados else "turbidez"
+    campos_obrigatorios = ["ph", campo_turbidez, "temperatura"]
 
     for campo in campos_obrigatorios:
         if campo not in dados:
@@ -166,7 +177,9 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
 
     try:
         float(dados["ph"])
-        float(dados["turbidez"])
+        turbidez = float(dados[campo_turbidez])
+        if campo_turbidez == "turbidez_relativa" and (not math.isfinite(turbidez) or not 0 <= turbidez <= 100):
+            return False, "turbidez_relativa deve ser um percentual entre 0 e 100"
         float(dados["temperatura"])
 
         if "tds" in dados and dados["tds"] is not None:
@@ -259,7 +272,9 @@ def receber_leitura():
 
     try:
         ph = float(dados["ph"])
-        turbidez = float(dados["turbidez"])
+        relativa = "turbidez_relativa" in dados
+        turbidez = float(dados["turbidez_relativa"] if relativa else dados["turbidez"])
+        turbidez_unidade = "percentual_relativo" if relativa else "ntu"
         temperatura = float(dados["temperatura"])
         tds = float(dados["tds"]) if "tds" in dados and dados["tds"] is not None else None
         data_hora = parse_data_hora(dados.get("data_hora"))
@@ -284,10 +299,10 @@ def receber_leitura():
                 cursor.execute(
                     """
                     INSERT INTO leituras
-                    (equipamento_id, leitura_id, ph, turbidez, temperatura, tds, data_hora)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, temperatura, tds, data_hora),
+                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora),
                 )
                 conn.commit()
                 registro_id = cursor.lastrowid
@@ -296,7 +311,7 @@ def receber_leitura():
                 if error.errno != 1062 or medicao_id is None:
                     raise
                 cursor.execute(
-                    "SELECT id, ph, turbidez, temperatura, tds, data_hora FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
+                    "SELECT id, ph, turbidez, temperatura, tds, data_hora, turbidez_unidade FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
                     (dados["equipamento_id"], medicao_id),
                 )
                 existente = cursor.fetchone()
@@ -307,7 +322,7 @@ def receber_leitura():
                     (old is not None and new is not None and math.isclose(float(old), new, rel_tol=1e-6, abs_tol=1e-6))
                     for old, new in zip(existente[1:5], (ph, turbidez, temperatura, tds))
                 )
-                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora:
+                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora or existente[6] != turbidez_unidade:
                     cursor.close()
                     return jsonify({"status": "erro", "message": "leitura_id já utilizado com outros dados"}), 409
                 registro_id = existente[0]
@@ -322,6 +337,7 @@ def receber_leitura():
                 "equipamento_id": dados.get("equipamento_id"),
                 "leitura_id": medicao_id,
                 "duplicada": duplicada,
+                "turbidez_unidade": turbidez_unidade,
             }
         ), 200 if duplicada else 201
 
@@ -355,7 +371,7 @@ def listar_leituras():
         with closing(get_connection()) as conn:
             cursor = conn.cursor(dictionary=True)
 
-            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, tds, data_hora FROM leituras"
+            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora FROM leituras"
             params = []
             if equipamento_id is not None:
                 query += " WHERE equipamento_id = %s"

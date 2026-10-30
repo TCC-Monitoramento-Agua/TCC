@@ -66,9 +66,13 @@ bool guardarMedicaoLocal(JsonDocument& doc) {
   serializeJson(doc, payload, sizeof(payload));
   bool ok = filaLocal.salvar(payload, n);
   if (ok) {
-    Serial.printf("[LEITURA] %s | pH=%.2f | temperatura=%.1f C | turbidez=%.1f NTU | TDS=%.0f ppm\r\n",
+    const bool relativa = !doc["turbidez_relativa"].isNull();
+    const double turbidez = relativa ? doc["turbidez_relativa"].as<double>() : doc["turbidez"].as<double>();
+    Serial.printf("[LEITURA] %s | pH=%.2f | temperatura=%.1f C | turbidez=%.1f %s | TDS=",
         doc["data_hora"] | "sem horário", doc["ph"].as<double>(), doc["temperatura"].as<double>(),
-        doc["turbidez"].as<double>(), doc["tds"].as<double>());
+        turbidez, relativa ? "% relativo" : "NTU");
+    if (doc["tds"].isNull()) Serial.println("indisponível");
+    else Serial.printf("%.0f ppm\r\n", doc["tds"].as<double>());
     Serial.printf("[LOCAL] SALVA NO ESP32 | UUID=%s | pendentes=%u/%u\r\n",
         doc["leitura_id"] | "", unsigned(filaLocal.pendentes()), unsigned(CAPACIDADE_FILA));
 #if LOG_DETALHADO

@@ -86,6 +86,52 @@ class TdsIntegrationTests(unittest.TestCase):
             self.assertEqual(self.post(payload).status_code, 201)
         self.assertTrue(all(row["tds"] is None for row in self.readings()))
 
+    def test_relative_turbidity_and_disabled_tds_round_trip(self):
+        payload = dict(self.payload, turbidez_relativa=12.5, tds=None)
+        payload.pop("turbidez")
+        result = self.post(payload)
+        self.assertEqual(result.status_code, 201)
+        self.assertEqual(result.get_json()["turbidez_unidade"], "percentual_relativo")
+        self.assertEqual(self.post(payload).status_code, 200)
+        leitura = self.readings()[0]
+        self.assertEqual(leitura["turbidez"], 12.5)
+        self.assertEqual(leitura["turbidez_unidade"], "percentual_relativo")
+        self.assertIsNone(leitura["tds"])
+        # Mesma medida numérica em outra unidade é outra informação: conflito.
+        self.assertEqual(self.post(dict(self.payload, turbidez=12.5, tds=None)).status_code, 409)
+        self.assertEqual(len(self.readings()), 1)
+
+    def test_relative_turbidity_validation(self):
+        self.assertEqual(self.post(dict(self.payload, turbidez_relativa=10)).status_code, 400)
+        for value in (-1, 101, "NaN", "Infinity", None):
+            payload = dict(self.payload, turbidez_relativa=value)
+            payload.pop("turbidez")
+            self.assertEqual(self.post(payload).status_code, 400)
+        self.assertEqual(self.readings(), [])
+
+    def test_unit_migration_preserves_existing_measurements(self):
+        self.assertEqual(self.post(self.payload).status_code, 201)
+        self.sql("ALTER TABLE leituras DROP COLUMN turbidez_unidade")
+        self.api.init_db()
+        self.api.init_db()
+        leitura = self.readings()[0]
+        self.assertEqual(leitura["tds"], 450.0)
+        self.assertEqual(leitura["turbidez"], 2.3)
+        self.assertEqual(leitura["turbidez_unidade"], "ntu")
+        self.assertEqual(self.post(self.payload).status_code, 200)
+
+    def test_accented_equipment_id_round_trip_and_deduplication(self):
+        payload = dict(self.payload, equipamento_id="físico_1")
+        self.assertEqual(self.post(payload).status_code, 201)
+        self.assertEqual(self.post(payload).status_code, 200)
+        response = self.client.get("/leituras", query_string={"equipamento_id": "físico_1"})
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["leituras"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["equipamento_id"], "físico_1")
+        self.assertEqual(self.post(dict(payload, equipamento_id="físico/1")).status_code, 400)
+        self.assertEqual(self.post(dict(payload, equipamento_id="x" * 65)).status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

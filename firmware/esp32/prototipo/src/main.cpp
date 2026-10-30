@@ -4,15 +4,12 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <algorithm>
-#include "ConversaoTds.h"
-#include "ConversaoTurbidez.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include "SensoresFisicos.h"
 
-constexpr uint8_t TDS_PIN = 32; // ADC1: pode ser usado com Wi-Fi ativo.
-constexpr uint8_t TURBIDEZ_PIN = 35; // ADC1: pode ser usado com Wi-Fi ativo.
-constexpr size_t NUM_AMOSTRAS_TDS = 31;
-constexpr unsigned long INTERVALO_AMOSTRAS_TDS_MS = 10;
-constexpr size_t NUM_AMOSTRAS_TURBIDEZ = 31;
-constexpr unsigned long INTERVALO_AMOSTRAS_TURBIDEZ_MS = 10;
+OneWire oneWire(TEMPERATURA_PIN);
+DallasTemperature sensorTemperatura(&oneWire);
 
 // API
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
@@ -20,7 +17,7 @@ const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 // ID opcional por instância (útil no Wokwi, onde o MAC pode se repetir).
 // Exemplo de build flag: -D EQUIPAMENTO_ID=\"esp32-001\"
 #ifndef EQUIPAMENTO_ID
-#define EQUIPAMENTO_ID ""
+#define EQUIPAMENTO_ID "físico_1"
 #endif
 
 // Teste controlado: 1 reenvia cada leitura confirmada uma vez, sem gerar novo UUID.
@@ -38,8 +35,8 @@ const char* NTP_SERVER_SECONDARY = "b.ntp.br";
 const char* NTP_SERVER_TERTIARY = "c.ntp.br";
 
 // WiFi
-const char* ssid = "iPhone";
-const char* password = "oiboanoite";
+const char* ssid = "iPhone de Lucas";
+const char* password = "Lu@@2021";
 
 // Configuracoes
 unsigned long lastSend = 0;
@@ -97,43 +94,51 @@ String getTimestamp() {
   return String(buf);
 }
 
-float lerTdsEstimado() {
-  uint32_t amostras[NUM_AMOSTRAS_TDS];
-  for (size_t i = 0; i < NUM_AMOSTRAS_TDS; ++i) {
-    amostras[i] = analogReadMilliVolts(TDS_PIN);
-    if (i + 1 < NUM_AMOSTRAS_TDS) delay(INTERVALO_AMOSTRAS_TDS_MS);
+uint16_t lerMedianaAdc(uint8_t pino) {
+  uint16_t amostras[NUM_AMOSTRAS_FISICAS];
+  for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
+    amostras[i] = analogRead(pino);
+    if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
   }
-  std::sort(amostras, amostras + NUM_AMOSTRAS_TDS);
-  const uint32_t milivoltsAdc = amostras[NUM_AMOSTRAS_TDS / 2];
-  const float tensaoModuloV = tensaoModuloTds(milivoltsAdc);
-  const float tds = estimarTdsPpm(tensaoModuloV);
-  Serial.printf("[TDS] ADC=%lu mV | módulo=%.3f V | estimado=%.1f ppm | referência=%.1f C (presumida)\r\n",
-      static_cast<unsigned long>(milivoltsAdc), tensaoModuloV, tds,
-      TDS_TEMPERATURA_REFERENCIA_C);
-  return tds;
+  std::sort(amostras, amostras + NUM_AMOSTRAS_FISICAS);
+  return amostras[NUM_AMOSTRAS_FISICAS / 2];
 }
 
-float lerTurbidezEstimada() {
-  uint32_t amostras[NUM_AMOSTRAS_TURBIDEZ];
-  for (size_t i = 0; i < NUM_AMOSTRAS_TURBIDEZ; ++i) {
-    amostras[i] = analogReadMilliVolts(TURBIDEZ_PIN);
-    if (i + 1 < NUM_AMOSTRAS_TURBIDEZ) delay(INTERVALO_AMOSTRAS_TURBIDEZ_MS);
+float lerPhCalibrado() {
+  const uint16_t adc = lerMedianaAdc(PH_PIN);
+  const float tensao = tensaoEscalaCalibracao(adc);
+  const float ph = converterPh(tensao);
+  Serial.printf("[PH] GPIO=%u | ADC=%u | tensão na escala da calibração=%.3f V | pH=%.2f\r\n",
+      PH_PIN, adc, tensao, ph);
+  if (!std::isfinite(ph) || ph < 0.0f || ph > 14.0f || adc == 0 || adc == 4095) {
+    Serial.println("[PH] ERRO: leitura fora da faixa; confira sonda, ligação e calibração");
+    return NAN;
   }
-  std::sort(amostras, amostras + NUM_AMOSTRAS_TURBIDEZ);
-  const uint32_t milivoltsAdc = amostras[NUM_AMOSTRAS_TURBIDEZ / 2];
-  const float tensaoModuloV = tensaoModuloTurbidez(milivoltsAdc);
-  const float turbidez = estimarTurbidezNtu(tensaoModuloV);
-  if (std::isfinite(turbidez)) {
-    Serial.printf("[TURBIDEZ] ADC=%lu mV | módulo=%.3f V | estimado=%.1f NTU\r\n",
-        static_cast<unsigned long>(milivoltsAdc), tensaoModuloV, turbidez);
-    if (turbidez > 1000.0f) {
-      Serial.println("[TURBIDEZ] AVISO: estimativa acima da faixa de 0-1000 NTU informada pela loja");
-    }
-  } else {
-    Serial.printf("[TURBIDEZ] ADC=%lu mV | módulo=%.3f V | sem estimativa: fora da curva de referência (2.5-4.5 V)\r\n",
-        static_cast<unsigned long>(milivoltsAdc), tensaoModuloV);
+  return ph;
+}
+
+float lerTurbidezRelativa() {
+  const uint16_t adc = lerMedianaAdc(TURBIDEZ_FISICA_PIN);
+  const float turbidez = turbidezRelativa(adc);
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%u | queda do sinal=%.1f %% (não é NTU)\r\n",
+      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), ADC_AGUA_REFERENCIA, turbidez);
+  if (adc == 0 || adc == 4095 || !std::isfinite(turbidez)) {
+    Serial.println("[TURBIDEZ] ERRO: entrada saturada ou referência inválida; confira a ligação");
+    return NAN;
   }
   return turbidez;
+}
+
+float lerTemperatura() {
+  if (!sensorTemperatura.getDeviceCount()) sensorTemperatura.begin();
+  sensorTemperatura.requestTemperatures(); // Aguarda a conversão antes de ler.
+  const float temperatura = sensorTemperatura.getTempCByIndex(0);
+  if (temperatura == DEVICE_DISCONNECTED_C || !temperaturaFisicaValida(temperatura)) {
+    Serial.println("[TEMPERATURA] ERRO: DS18B20 ausente ou leitura inválida");
+    return NAN;
+  }
+  Serial.printf("[TEMPERATURA] GPIO=%u | DS18B20=%.2f C\r\n", TEMPERATURA_PIN, temperatura);
+  return temperatura;
 }
 
 int enviarPostComRetry(const String& payload) {
@@ -162,6 +167,7 @@ int enviarPostComRetry(const String& payload) {
       ack["status"].as<String>() == "ok" &&
       ack["leitura_id"].as<String>() == leituraId &&
       ack["equipamento_id"].as<String>() == equipamentoId &&
+      (original["turbidez_relativa"].isNull() || ack["turbidez_unidade"].as<String>() == "percentual_relativo") &&
       ack["id"].is<uint64_t>() && ack["id"].as<uint64_t>() > 0;
   if (confirmou) {
     Serial.printf("[BANCO] CONFIRMADO | UUID=%s | id=%llu | HTTP=%d | duplicada=%s\r\n",
@@ -177,27 +183,25 @@ int enviarPostComRetry(const String& payload) {
 
 void sendReading() {
   if (!coletaComHorarioPermitida()) return;
-  // pH temporariamente desativado; valor provisório, não é uma medição.
-  const float ph = 0.0;
-
-  // Temperatura ainda é um valor provisório, sem leitura do DS18B20.
-  float temperatura = 22.5;
-  const float tds = lerTdsEstimado();
-  const float turbidez = lerTurbidezEstimada();
-  if (!std::isfinite(turbidez)) {
-    Serial.println("[LEITURA] Medição não criada: conversão de turbidez indisponível");
+  const String horarioColeta = getTimestamp();
+  const float ph = lerPhCalibrado();
+  const float temperatura = lerTemperatura();
+  const float turbidez = lerTurbidezRelativa();
+  if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
+    Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");
     return;
   }
 
-StaticJsonDocument<1024> doc;
+  StaticJsonDocument<1024> doc;
   doc["leitura_id"] = gerarLeituraId();
   doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
       ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
   doc["ph"] = ph;
-  doc["turbidez"] = turbidez;
+  // Campo distinto impede que uma API antiga grave o percentual como NTU.
+  doc["turbidez_relativa"] = turbidez;
   doc["temperatura"] = temperatura;
-  doc["tds"] = tds;
-  doc["data_hora"] = getTimestamp();
+  doc["tds"] = nullptr; // Sensor temporariamente desativado; não enviar zero fictício.
+  doc["data_hora"] = horarioColeta;
 
   guardarMedicaoLocal(doc);
 }
@@ -211,8 +215,12 @@ void setup() {
   Serial.println("================================");
 
   analogReadResolution(12);
-  analogSetPinAttenuation(TDS_PIN, ADC_11db);
-  analogSetPinAttenuation(TURBIDEZ_PIN, ADC_11db);
+  analogSetPinAttenuation(PH_PIN, ADC_11db);
+  analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
+  sensorTemperatura.begin();
+  sensorTemperatura.setResolution(12);
+  sensorTemperatura.setWaitForConversion(true);
+  Serial.println("[SENSORES] pH=GPIO34 | turbidez relativa=GPIO32 | DS18B20=GPIO14 | TDS desativado");
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();

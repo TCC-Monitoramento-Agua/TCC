@@ -12,7 +12,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | Projeto separado; o pH está temporariamente desativado e envia 0.0; TDS e turbidez são estimados pelas leituras analógicas; temperatura ainda usa valor fixo. Sensores reais e calibração ainda precisam ser integrados. |
+| Protótipo físico | pH com dois pontos confirmados, DS18B20 real e turbidez relativa em percentual; TDS temporariamente desativado (`null`). Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -265,7 +265,7 @@ Configurações alteradas pelo gerador também podem ganhar backups. Não execut
 | Configuração | Onde alterar | Valor atual |
 |---|---|---|
 | Espera após coleta | `SEND_INTERVAL`, em cada `main.cpp` | 10000 ms |
-| Amostras analógicas | `NUM_AMOSTRAS` / `TEMPO_ENTRE_AMOSTRAS`, em cada firmware | 10 amostras; 500 ms entre elas |
+| Amostras analógicas | Simulação: `NUM_AMOSTRAS` / `TEMPO_ENTRE_AMOSTRAS`; físico: `SensoresFisicos.h` | Simulação: média de 10, 500 ms; físico: mediana de 31, 10 ms |
 | Timeout HTTP | `HTTP_TIMEOUT_MS`, em cada firmware | 60000 ms |
 | Timeout de conexão | `HTTP_CONNECT_TIMEOUT_MS`, em cada firmware | 15000 ms |
 | Capacidade local | `CAPACIDADE_FILA`, em `include/FilaLocal.h` | 1.000 leituras |
@@ -306,7 +306,7 @@ Resposta típica de gravação:
 }
 ```
 
-Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `temperatura`, `tds` e `data_hora`. pH, turbidez e temperatura são obrigatórios; TDS pode ser NULL. UUID exige equipamento e horário. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
+Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `turbidez_unidade`, `temperatura`, `tds` e `data_hora`. pH, temperatura e um dos campos de entrada `turbidez` (NTU) ou `turbidez_relativa` (percentual) são obrigatórios; TDS pode ser NULL. UUID exige equipamento e horário. A identificação aceita letras acentuadas, como `físico_1`. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
 
 ### Atualização do campo TDS
 
@@ -341,57 +341,17 @@ pio run -d firmware/esp32/prototipo --target upload
 pio device monitor --baud 115200
 ```
 
-Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. A leitura de pH está temporariamente desativada: o firmware envia 0.0 como valor provisório, sem ler o GPIO 34. O TDS é estimado a partir da leitura do GPIO 32 e a turbidez, do GPIO 35. A temperatura permanece provisoriamente em 22.5 °C, sem depender do DS18B20. O valor de pH pode disparar o alerta de acidez do SCADA; não representa uma medição real. Não use esses dados como medições calibradas de água.
+Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. A configuração atual do físico usa **pH no GPIO 34**, **turbidez no GPIO 32** e **DS18B20 no GPIO 14**, conforme o código de teste enviado pelo usuário. Essa pinagem de turbidez difere do esquema anterior (GPIO 35); confira a ligação antes de gravar.
 
-### TDS estimado no protótipo
+O pH utiliza os pontos confirmados de **1,57 V → pH 7** e **1,95 V → pH 4**, na escala `ADC / 4095 × 3,3` usada na calibração, já após o divisor. Os analógicos usam a mediana de 31 amostras, com 10 ms entre amostras. A temperatura é lida no DS18B20, sem valor fixo.
 
-Pinagem definida para a montagem: **TDS no GPIO 32**, turbidez no GPIO 35, pH no GPIO 34 (reservado) e DS18B20 no GPIO 14 (reservado). Os analógicos são ADC1, compatível com Wi-Fi. Nesta etapa, TDS e turbidez têm aquisição analógica real implementada no protótipo, com conversões estimadas.
+O TDS está temporariamente desativado nas novas aquisições e é enviado como `null`, aparecendo como `--` no SCADA. Os registros históricos e as simulações são preservados.
 
-O módulo TDS é alimentado em 5 V e compartilha GND com o ESP32. O divisor está configurado para **10 kΩ entre a saída analógica do módulo e o GPIO 32**, e **15 kΩ entre o GPIO 32 e GND**. A posição dos resistores importa: o código reconstrói a tensão do módulo multiplicando a tensão do ADC por `(10 + 15) / 15`, aproximadamente 1.6667. Os valores ficam em `firmware/esp32/include/ConversaoTds.h`; ajuste-os se a montagem for diferente.
+A turbidez física utiliza a **queda percentual do sinal**, com referência inicial `ADC_AGUA_REFERENCIA = 2709` do teste fornecido; não é NTU nem calibração com padrão conhecido. O JSON usa `turbidez_relativa`, e a API registra sua unidade. O SCADA exibe `% relativo`, sem aplicar o alerta de 50 NTU a essa grandeza. A curva genérica anterior foi removida do fluxo físico.
 
-O firmware lê 31 amostras com `analogReadMilliVolts`, espaçadas em 10 ms, e usa a mediana para reduzir o efeito de picos isolados. Aplica então a fórmula de referência da [biblioteca GravityTDS](https://github.com/DFRobot/GravityTDS/blob/master/GravityTDS.cpp), com fator de calibração 1 e conversão de condutividade para TDS pelo fator 0.5:
+**Publicar a API e o SCADA atualizados antes de usar este firmware.** A API adiciona `turbidez_unidade` à tabela existente, preservando as linhas. Uma API antiga rejeita o novo payload relativo, em vez de registrá-lo como NTU; a leitura continua na fila. Detalhes, fórmulas, logs e testes estão em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
 
-```text
-V = tensão do módulo em volts, reconstruída após o divisor
-TDS estimado (ppm) = (133.42 × V³ − 255.86 × V² + 857.39 × V) × 0.5
-```
-
-Essa curva pressupõe resposta compatível com o módulo de referência e temperatura de **25 °C**. O sensor comprado ainda não foi validado contra uma solução padrão; o resultado é uma estimativa, não uma medição calibrada. Ainda não há compensação por temperatura medida. A temperatura fixa de 22.5 °C enviada pela API é provisória e não é usada no cálculo de TDS. O DS18B20 será integrado em outra etapa.
-
-A serial mostra `[TDS] ADC=... mV | módulo=... V | estimado=... ppm | referência=25.0 C (presumida)`. O valor estimado substitui os 450 ppm fixos e segue pelo campo `tds` para a fila, a API e o SCADA.
-
-Para conferir a conversão numérica em um computador com compilador C++:
-
-```sh
-g++ -std=c++11 tests/test_tds_conversion.cpp -o /tmp/test_tds_conversion
-/tmp/test_tds_conversion
-```
-
-### Turbidez estimada no protótipo
-
-Ligue a saída **analógica** do módulo ao **GPIO 35** pelo divisor: **10 kΩ entre a saída do módulo e o GPIO**, **15 kΩ entre o GPIO e GND**. Alimente o módulo em 5 V e use GND comum. Se a placa tiver seletor analógico/digital, use o modo analógico. Os valores dos resistores ficam em `firmware/esp32/include/ConversaoTurbidez.h`.
-
-O firmware lê 31 amostras em milivolts, espaçadas em 10 ms, usa a mediana e reconstrói a tensão original multiplicando por `(10 + 15) / 15`. Substitui os 2.3 NTU fixos pela estimativa abaixo:
-
-```text
-V = tensão original do módulo em volts, antes do divisor
-NTU estimado = −1120.4 × V² + 5742.3 × V − 4352.9
-```
-
-É um ajuste quadrático de referência associado a módulos do tipo SEN0189, adotado como aproximação para os ensaios. A descrição da Eletrogate não fornece essa curva e a correspondência com o sensor comprado ainda não foi confirmada. A fórmula não é uma calibração e não garante medição precisa em NTU. O recipiente, as reflexões internas, a posição da sonda e a iluminação também influenciam a resposta; não há fator de correção calculado a partir da garrafa.
-
-O código utiliza a curva apenas para tensões do módulo entre **2.5 e 4.5 V**. Valores negativos do polinômio no extremo de água clara são limitados a zero. Fora desse intervalo, a serial mostra a tensão e `sem estimativa`, sem inventar um valor NTU; aquela medição completa não é criada, enquanto as pendências válidas continuam sendo enviadas. A curva pode gerar estimativas acima dos **1000 NTU** informados pela loja: nesse caso há aviso explícito na serial, e o valor de referência não é recortado artificialmente para 1000 nem deve ser tratado como medição validada nessa faixa.
-
-A serial mostra `[TURBIDEZ] ADC=... mV | módulo=... V | estimado=... NTU`. O valor segue pelo campo `turbidez` para a fila, API e SCADA. O TDS continua com referência presumida de 25 °C, e a temperatura enviada continua provisoriamente em 22.5 °C; a integração do DS18B20 foi adiada.
-
-Para testar a conversão numérica:
-
-```sh
-g++ -std=c++11 tests/test_turbidez_conversion.cpp -o /tmp/test_turbidez_conversion
-/tmp/test_turbidez_conversion
-```
-
-A fila compartilha a implementação com a simulação. Não execute `erase`/`uploadfs` com pendências. A preservação após falta de energia precisa ser validada no hardware; reiniciar ou reabrir Wokwi pode começar uma flash vazia.
+A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se um sensor ativo tiver leitura inválida, a nova medição completa é recusada; as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 
 ## 10. Validação alinhada ao documento do TCC
 
@@ -410,7 +370,7 @@ As seções de testes e análise de riscos do PDF (páginas 35–37) preveem fal
 
 Procedimentos completos: [deduplicação](firmware/esp32/DEDUPLICACAO.md) e [fila local](firmware/esp32/FILA_LOCAL.md). Comece os testes de queda após NTP sincronizar e **não pare/recompile o Wokwi durante a interrupção**.
 
-Continuam pendentes a integração/calibração dos sensores reais, gráficos históricos, definição final das faixas de alerta e ensaios físicos de energia e funcionamento prolongado. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
+Continuam pendentes a validação física desta integração, a conferência da referência relativa de turbidez, a recuperação/reintegração do TDS, gráficos históricos e ensaios físicos de energia e funcionamento prolongado. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
 
 ## Problemas comuns
 
