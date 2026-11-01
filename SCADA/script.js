@@ -2,9 +2,12 @@ const API_URL = "https://api-monitoramento-agua.onrender.com/leituras?limite=100
 
 const INTERVALO_ATUALIZACAO = 5000; // 5 segundos após concluir a consulta
 const TEMPO_LIMITE_REQUISICAO = 60000; // Até 60 segundos para receber os dados
+const LIMITE_TABELA_HISTORICO = 15; // Quantidade de registros exibidos no histórico recente
 
 let todasAsLeituras = [];
-let equipamentoSelecionado = "todos"; // "todos" ou ID específico do equipamento (ex: "1")
+// Conjunto com os IDs dos equipamentos selecionados (strings)
+let equipamentosSelecionados = new Set();
+let modoTodos = true; // Quando true, exibe todos os equipamentos sem restrição
 let primeiraConexao = true;
 
 
@@ -103,18 +106,36 @@ async function buscarDadosDaApi() {
 
 /*
 ====================================================
+AUXILIARES DE EQUIPAMENTOS
+====================================================
+*/
+function obterIdsEquipamentosDisponiveis() {
+    const ids = [];
+    todasAsLeituras.forEach((item) => {
+        const id = item.equipamento_id != null ? String(item.equipamento_id) : "Sem ID";
+        if (!ids.includes(id)) {
+            ids.push(id);
+        }
+    });
+    return ids;
+}
+
+
+/*
+====================================================
 APLICA O FILTRO DO EQUIPAMENTO NA TELA GERAL
 ====================================================
 */
 function aplicarFiltroTela() {
     let leiturasFiltradas = [];
 
-    if (equipamentoSelecionado === "todos") {
+    if (modoTodos) {
         leiturasFiltradas = todasAsLeituras;
     } else {
-        leiturasFiltradas = todasAsLeituras.filter(
-            (item) => String(item.equipamento_id) === String(equipamentoSelecionado)
-        );
+        leiturasFiltradas = todasAsLeituras.filter((item) => {
+            const id = item.equipamento_id != null ? String(item.equipamento_id) : "Sem ID";
+            return equipamentosSelecionados.has(id);
+        });
     }
 
     const spanEquipamento = document.getElementById("equipamentoLeitura");
@@ -123,8 +144,27 @@ function aplicarFiltroTela() {
     const descTabela = document.getElementById("descricaoTabela");
     const badgeContagem = document.getElementById("badgeContagemTabela");
     const btnLimpar = document.getElementById("btnLimparFiltro");
+    const contadorDropdown = document.getElementById("dropdownContadorBadge");
+    const dicaDropdown = document.getElementById("dropdownDica");
 
-    // Caso não haja nenhuma leitura
+    const listaSelecionados = Array.from(equipamentosSelecionados);
+    const qtdSelecionados = listaSelecionados.length;
+
+    // Atualiza contadores do dropdown
+    if (contadorDropdown) {
+        contadorDropdown.textContent = modoTodos ? "Todos" : `${qtdSelecionados} selecionado${qtdSelecionados !== 1 ? "s" : ""}`;
+    }
+    if (dicaDropdown) {
+        if (modoTodos) {
+            dicaDropdown.textContent = "Exibindo todos os equipamentos";
+        } else if (qtdSelecionados === 1) {
+            dicaDropdown.textContent = `1 equipamento selecionado`;
+        } else {
+            dicaDropdown.textContent = `${qtdSelecionados} equipamentos selecionados`;
+        }
+    }
+
+    // Caso não haja nenhuma leitura retornada para os filtros
     if (leiturasFiltradas.length === 0) {
         limparLeituras();
 
@@ -132,22 +172,22 @@ function aplicarFiltroTela() {
             spanEquipamento.textContent = "--";
             document.getElementById("statusLeitura").textContent = "Nenhuma leitura disponível no banco.";
         } else {
-            spanEquipamento.textContent = String(equipamentoSelecionado);
-            document.getElementById("statusLeitura").textContent = `Nenhum dado recente para o Equipamento ${equipamentoSelecionado}.`;
+            spanEquipamento.textContent = modoTodos ? "--" : listaSelecionados.join(", ");
+            document.getElementById("statusLeitura").textContent = `Nenhum dado recente para o(s) equipamento(s) selecionado(s).`;
         }
 
-        if (equipamentoSelecionado === "todos") {
+        if (modoTodos) {
             badgeFiltro.textContent = "Todos ▾";
             chipEquipamento.classList.remove("filtrado");
             if (btnLimpar) btnLimpar.classList.add("oculto");
             if (badgeContagem) badgeContagem.textContent = "0 registros";
-            if (descTabela) descTabela.textContent = "Últimas 10 medições consolidadas no banco de dados";
+            if (descTabela) descTabela.textContent = `Últimas ${LIMITE_TABELA_HISTORICO} medições consolidadas no banco de dados`;
         } else {
-            badgeFiltro.textContent = `ID: ${equipamentoSelecionado} ▾`;
+            badgeFiltro.textContent = qtdSelecionados === 1 ? `ID: ${listaSelecionados[0]} ▾` : `${qtdSelecionados} SELECIONADOS ▾`;
             chipEquipamento.classList.add("filtrado");
             if (btnLimpar) btnLimpar.classList.remove("oculto");
-            if (badgeContagem) badgeContagem.textContent = `Equipamento ${equipamentoSelecionado} (0 registros)`;
-            if (descTabela) descTabela.textContent = `Exibindo medições exclusivas do Equipamento ${equipamentoSelecionado}`;
+            if (badgeContagem) badgeContagem.textContent = `${qtdSelecionados} Equipamento(s) (0 registros)`;
+            if (descTabela) descTabela.textContent = `Exibindo medições de ${qtdSelecionados} equipamento(s) (${listaSelecionados.join(", ")})`;
         }
 
         atualizarTabelaHistorico([]);
@@ -160,38 +200,46 @@ function aplicarFiltroTela() {
     verificarAlarmes(leituraMaisRecente);
 
     // Atualiza metadados do chip de Equipamento
-    if (equipamentoSelecionado === "todos") {
-        spanEquipamento.textContent = `${leituraMaisRecente.equipamento_id != null ? leituraMaisRecente.equipamento_id : "1"} (Todos)`;
+    if (modoTodos) {
+        const idPrimeiro = leituraMaisRecente.equipamento_id != null ? leituraMaisRecente.equipamento_id : "1";
+        spanEquipamento.textContent = `${idPrimeiro} (Todos)`;
         badgeFiltro.textContent = "Todos ▾";
         chipEquipamento.classList.remove("filtrado");
         chipEquipamento.title = "Clique para filtrar por equipamento (Exibindo todos os nós)";
 
         document.getElementById("statusLeitura").textContent = "Dados atualizados com sucesso.";
 
-        if (descTabela) descTabela.textContent = "Últimas 10 medições consolidadas no banco de dados";
-        if (badgeContagem) badgeContagem.textContent = `${Math.min(leiturasFiltradas.length, 10)} registros (Todos)`;
+        if (descTabela) descTabela.textContent = `Últimas ${LIMITE_TABELA_HISTORICO} medições consolidadas no banco de dados`;
+        if (badgeContagem) badgeContagem.textContent = `${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros (Todos)`;
         if (btnLimpar) btnLimpar.classList.add("oculto");
     } else {
-        spanEquipamento.textContent = String(equipamentoSelecionado);
-        badgeFiltro.textContent = `ID: ${equipamentoSelecionado} ▾`;
+        const textoFormatado = listaSelecionados.join(", ");
+        spanEquipamento.textContent = textoFormatado;
+        badgeFiltro.textContent = qtdSelecionados === 1 ? `ID: ${listaSelecionados[0]} ▾` : `${qtdSelecionados} SELECIONADOS ▾`;
         chipEquipamento.classList.add("filtrado");
-        chipEquipamento.title = `Filtro ativo: Equipamento ${equipamentoSelecionado}. Clique para alterar`;
+        chipEquipamento.title = `Filtro ativo: ${textoFormatado}. Clique para alterar`;
 
-        document.getElementById("statusLeitura").textContent = `Filtrado por Equipamento ${equipamentoSelecionado} (${leiturasFiltradas.length} medição(ões)).`;
+        if (qtdSelecionados === 1) {
+            document.getElementById("statusLeitura").textContent = `Filtrado por Equipamento ${listaSelecionados[0]} (${leiturasFiltradas.length} medição(ões)).`;
+            if (descTabela) descTabela.textContent = `Exibindo medições exclusivas do Equipamento ${listaSelecionados[0]}`;
+            if (badgeContagem) badgeContagem.textContent = `Equipamento ${listaSelecionados[0]} (${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros)`;
+        } else {
+            document.getElementById("statusLeitura").textContent = `Filtrado por ${qtdSelecionados} equipamentos (${leiturasFiltradas.length} medição(ões)).`;
+            if (descTabela) descTabela.textContent = `Exibindo medições de ${qtdSelecionados} equipamentos (${textoFormatado})`;
+            if (badgeContagem) badgeContagem.textContent = `${qtdSelecionados} Equipamentos (${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros)`;
+        }
 
-        if (descTabela) descTabela.textContent = `Exibindo medições exclusivas do Equipamento ${equipamentoSelecionado}`;
-        if (badgeContagem) badgeContagem.textContent = `Equipamento ${equipamentoSelecionado} (${Math.min(leiturasFiltradas.length, 10)} registros)`;
         if (btnLimpar) btnLimpar.classList.remove("oculto");
     }
 
-    // Atualiza a tabela histórica apenas com as leituras filtradas (máximo 10)
-    atualizarTabelaHistorico(leiturasFiltradas.slice(0, 10));
+    // Atualiza a tabela histórica com as medições filtradas (máximo LIMITE_TABELA_HISTORICO)
+    atualizarTabelaHistorico(leiturasFiltradas.slice(0, LIMITE_TABELA_HISTORICO));
 }
 
 
 /*
 ====================================================
-DROPDOWN DE EQUIPAMENTOS
+DROPDOWN DE EQUIPAMENTOS (SELEÇÃO MÚLTIPLA)
 ====================================================
 */
 function atualizarDropdownEquipamentos() {
@@ -216,54 +264,89 @@ function atualizarDropdownEquipamentos() {
 
     // Opção 1: Todos os Equipamentos
     const itemTodos = document.createElement("div");
-    const estaAtivoTodos = equipamentoSelecionado === "todos";
-    itemTodos.className = `dropdown-item ${estaAtivoTodos ? "ativo" : ""}`;
+    itemTodos.className = `dropdown-item ${modoTodos ? "ativo" : ""}`;
     itemTodos.setAttribute("role", "option");
-    itemTodos.setAttribute("aria-selected", estaAtivoTodos);
+    itemTodos.setAttribute("aria-selected", modoTodos);
     itemTodos.innerHTML = `
         <div class="dropdown-item-esquerda">
+            <div class="checkbox-custom ${modoTodos ? "marcado" : ""}">
+                ${modoTodos ? '<svg class="icone-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ""}
+            </div>
             <span class="dropdown-item-icone">🌐</span>
             <div class="dropdown-item-texto">
                 <span class="dropdown-item-titulo">Todos os Equipamentos</span>
                 <span class="dropdown-item-sub">${todasAsLeituras.length} leitura(s) registradas</span>
             </div>
         </div>
-        ${estaAtivoTodos ? '<span class="dropdown-item-check">✓</span>' : ""}
     `;
     itemTodos.addEventListener("click", (evento) => {
         evento.stopPropagation();
-        selecionarEquipamento("todos");
+        selecionarTodosEquipamentos();
     });
     listaContainer.appendChild(itemTodos);
 
-    // Opções para cada ID de equipamento encontrado
+    // Opções individuais para cada ID de equipamento
     mapaEquipamentos.forEach((info, id) => {
         const itemEq = document.createElement("div");
-        const estaAtivo = String(equipamentoSelecionado) === id;
+        const estaAtivo = !modoTodos && equipamentosSelecionados.has(id);
         itemEq.className = `dropdown-item ${estaAtivo ? "ativo" : ""}`;
         itemEq.setAttribute("role", "option");
         itemEq.setAttribute("aria-selected", estaAtivo);
         itemEq.innerHTML = `
             <div class="dropdown-item-esquerda">
+                <div class="checkbox-custom ${estaAtivo ? "marcado" : ""}">
+                    ${estaAtivo ? '<svg class="icone-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ""}
+                </div>
                 <span class="dropdown-item-icone">📟</span>
                 <div class="dropdown-item-texto">
                     <span class="dropdown-item-titulo">Equipamento ${id}</span>
                     <span class="dropdown-item-sub">${info.total} medições • Última: ${formatarData(info.ultimaData)}</span>
                 </div>
             </div>
-            ${estaAtivo ? '<span class="dropdown-item-check">✓</span>' : ""}
         `;
         itemEq.addEventListener("click", (evento) => {
             evento.stopPropagation();
-            selecionarEquipamento(id);
+            alternarEquipamento(id);
         });
         listaContainer.appendChild(itemEq);
     });
 }
 
-function selecionarEquipamento(id) {
-    equipamentoSelecionado = id;
-    fecharDropdown();
+function alternarEquipamento(id) {
+    if (modoTodos) {
+        // Se estava em "Todos", seleciona apenas o equipamento clicado
+        modoTodos = false;
+        equipamentosSelecionados.clear();
+        equipamentosSelecionados.add(id);
+    } else {
+        if (equipamentosSelecionados.has(id)) {
+            equipamentosSelecionados.delete(id);
+            // Se desmarcou todos, volta automaticamente para o modo "Todos"
+            if (equipamentosSelecionados.size === 0) {
+                modoTodos = true;
+            }
+        } else {
+            equipamentosSelecionados.add(id);
+        }
+    }
+
+    atualizarDropdownEquipamentos();
+    aplicarFiltroTela();
+}
+
+function selecionarTodosEquipamentos() {
+    modoTodos = true;
+    equipamentosSelecionados.clear();
+    atualizarDropdownEquipamentos();
+    aplicarFiltroTela();
+}
+
+function marcarTodosIndividualmente() {
+    const todosIds = obterIdsEquipamentosDisponiveis();
+    if (todosIds.length === 0) return;
+    modoTodos = false;
+    equipamentosSelecionados.clear();
+    todosIds.forEach(id => equipamentosSelecionados.add(id));
     atualizarDropdownEquipamentos();
     aplicarFiltroTela();
 }
@@ -314,10 +397,43 @@ function inicializarControlesFiltro() {
         });
     }
 
-    const btnLimpar = document.getElementById("btnLimparFiltro");
-    if (btnLimpar) {
-        btnLimpar.addEventListener("click", () => {
-            selecionarEquipamento("todos");
+    // Evita que cliques dentro do dropdown fechem o próprio dropdown
+    const dropdown = document.getElementById("dropdownEquipamentos");
+    if (dropdown) {
+        dropdown.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+        });
+    }
+
+    // Ações do cabeçalho e rodapé do dropdown
+    const btnMarcarTodos = document.getElementById("btnDropdownSelecionarTodos");
+    if (btnMarcarTodos) {
+        btnMarcarTodos.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+            marcarTodosIndividualmente();
+        });
+    }
+
+    const btnLimparDropdown = document.getElementById("btnDropdownLimpar");
+    if (btnLimparDropdown) {
+        btnLimparDropdown.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+            selecionarTodosEquipamentos();
+        });
+    }
+
+    const btnConcluir = document.getElementById("btnDropdownConcluir");
+    if (btnConcluir) {
+        btnConcluir.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+            fecharDropdown();
+        });
+    }
+
+    const btnLimparTabela = document.getElementById("btnLimparFiltro");
+    if (btnLimparTabela) {
+        btnLimparTabela.addEventListener("click", () => {
+            selecionarTodosEquipamentos();
         });
     }
 
@@ -455,7 +571,7 @@ HISTÓRICO
 */
 function limparLeituras() {
     for (const id of ["valorPh", "valorTemperatura", "valorTds",
-                      "valorTurbidez", "dataLeitura"]) {
+        "valorTurbidez", "dataLeitura"]) {
         document.getElementById(id).textContent = "--";
     }
     const alerta = document.getElementById("alertaSistema");
