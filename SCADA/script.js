@@ -64,6 +64,7 @@ async function buscarDadosDaApi() {
             temperatura: Number(leituraAPI.temperatura),
             tds: leituraAPI.tds == null ? null : Number(leituraAPI.tds),
             turbidez: Number(leituraAPI.turbidez),
+            turbidez_unidade: leituraAPI.turbidez_unidade || "ntu",
             created_at: leituraAPI.data_hora
         }));
 
@@ -457,6 +458,14 @@ function inicializarControlesFiltro() {
 ATUALIZA OS CARDS
 ====================================================
 */
+function turbidezEhRelativa(dados) {
+    return dados.turbidez_unidade === "percentual_relativo";
+}
+
+function formatarTurbidez(dados) {
+    return `${dados.turbidez.toFixed(1)} ${turbidezEhRelativa(dados) ? "% relativo" : "NTU"}`;
+}
+
 function atualizarCards(dados) {
     document.getElementById(
         "valorPh"
@@ -476,7 +485,11 @@ function atualizarCards(dados) {
     document.getElementById(
         "valorTurbidez"
     ).textContent =
-        `${dados.turbidez.toFixed(1)} NTU`;
+        formatarTurbidez(dados);
+    document.getElementById("unidadeTurbidez").textContent = turbidezEhRelativa(dados) ? "% RELATIVO" : "NTU";
+    document.getElementById("faixaTurbidez").textContent = turbidezEhRelativa(dados)
+        ? "Queda do sinal em relação à amostra de referência; sem escala NTU."
+        : "Limite configurado: ≤ 50.0 NTU";
 
     document.getElementById(
         "dataLeitura"
@@ -519,13 +532,19 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (dados.tds != null && dados.tds < 250) {
+    if (dados.tds != null && dados.tds < 50) {
         mensagens.push(
             "TDS abaixo da faixa configurada."
         );
     }
 
-    if (dados.turbidez > 50) {
+    if (dados.tds != null && dados.tds > 300) {
+        mensagens.push(
+            "TDS acima da faixa configurada."
+        );
+    }
+
+    if (!turbidezEhRelativa(dados) && dados.turbidez > 50) {
         mensagens.push(
             "Turbidez elevada. Água com excesso de partículas."
         );
@@ -558,6 +577,8 @@ function limparLeituras() {
     const alerta = document.getElementById("alertaSistema");
     alerta.textContent = "";
     alerta.classList.add("oculto");
+    document.getElementById("unidadeTurbidez").textContent = "--";
+    document.getElementById("faixaTurbidez").textContent = "Aguardando leitura.";
 }
 
 
@@ -608,7 +629,7 @@ function atualizarTabelaHistorico(listaLeituras) {
                 </td>
 
                 <td>
-                    ${item.turbidez.toFixed(1)} NTU
+                    ${formatarTurbidez(item)}
                 </td>
             `;
 

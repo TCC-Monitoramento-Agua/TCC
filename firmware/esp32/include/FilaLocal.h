@@ -1,5 +1,7 @@
 #pragma once
 #include "FlashStorage.h"
+#include "ControleHorario.h"
+#include <esp_sntp.h>
 #ifndef LOG_DETALHADO
 #define LOG_DETALHADO 0
 #endif
@@ -19,17 +21,26 @@ const char* motivoReset() {
 }
 
 // Limite de registros, independente da frequência de coleta.
-const size_t CAPACIDADE_FILA = 20;
+const size_t CAPACIDADE_FILA = 1000;
 const uint32_t RETRY_INICIAL_MS = 5000;
 const uint32_t RETRY_MAXIMO_MS = 60000;
 FlashStorage storageFila;
 FilaPersistente filaLocal(storageFila, CAPACIDADE_FILA);
 bool filaPronta = false;
-String bootFila;
+ControleHorarioColeta relogioColeta;
 uint32_t ultimaTentativaFila = 0, esperaFila = 0;
 
-void iniciarFilaLocal(const String& boot) {
-  bootFila = boot;
+void aoSincronizarHorario(struct timeval*) {
+  relogioColeta.marcarSincronizado();
+}
+
+bool coletaComHorarioPermitida() {
+  if (relogioColeta.podeColetar(time(nullptr))) return true;
+  Serial.println("[RELOGIO] Aguardando sincronização NTP; coleta não realizada");
+  return false;
+}
+
+void iniciarFilaLocal() {
   Serial.println("[FILA] Inicializando flash...");
   filaPronta = storageFila.montar(CAPACIDADE_FILA) && filaLocal.iniciar();
   if (filaPronta) {
@@ -43,11 +54,9 @@ bool guardarMedicaoLocal(JsonDocument& doc) {
   if (!filaPronta || !filaLocal.saudavel()) {
     Serial.println("[FILA] ERRO: não foi possível armazenar a medição"); return false;
   }
-  if (time(nullptr) < 1000000000) {
-    doc["data_hora"] = "";
-    doc["_boot_id"] = bootFila;
-    doc["_uptime_ms"] = millis();
-    Serial.println("[RELOGIO] Sem NTP: guardando valores e uptime até sincronizar neste boot");
+  if (!relogioColeta.podeGuardar(time(nullptr), doc["data_hora"] | "")) {
+    Serial.println("[RELOGIO] Medição recusada: horário não sincronizado ou data_hora ausente");
+    return false;
   }
   char payload[496];
   const size_t n = measureJson(doc);
@@ -57,9 +66,13 @@ bool guardarMedicaoLocal(JsonDocument& doc) {
   serializeJson(doc, payload, sizeof(payload));
   bool ok = filaLocal.salvar(payload, n);
   if (ok) {
-    Serial.printf("[LEITURA] %s | pH=%.2f | temperatura=%.1f C | turbidez=%.1f NTU | TDS=%.0f ppm\r\n",
+    const bool relativa = !doc["turbidez_relativa"].isNull();
+    const double turbidez = relativa ? doc["turbidez_relativa"].as<double>() : doc["turbidez"].as<double>();
+    Serial.printf("[LEITURA] %s | pH=%.2f | temperatura=%.1f C | turbidez=%.1f %s | TDS=",
         doc["data_hora"] | "sem horário", doc["ph"].as<double>(), doc["temperatura"].as<double>(),
-        doc["turbidez"].as<double>(), doc["tds"].as<double>());
+        turbidez, relativa ? "% relativo" : "NTU");
+    if (doc["tds"].isNull()) Serial.println("indisponível");
+    else Serial.printf("%.0f ppm\r\n", doc["tds"].as<double>());
     Serial.printf("[LOCAL] SALVA NO ESP32 | UUID=%s | pendentes=%u/%u\r\n",
         doc["leitura_id"] | "", unsigned(filaLocal.pendentes()), unsigned(CAPACIDADE_FILA));
 #if LOG_DETALHADO
@@ -82,22 +95,15 @@ void processarFilaLocal(int (*enviar)(const String&)) {
     StaticJsonDocument<1024> doc;
     bool pronto = !deserializeJson(doc, registro.dados);
     if (pronto && !strlen(doc["data_hora"] | "")) {
-      pronto = doc["_boot_id"].as<String>() == bootFila && time(nullptr) >= 1000000000;
-      if (pronto) {
-        time_t epoch = time(nullptr) - uint32_t(millis() - doc["_uptime_ms"].as<uint32_t>()) / 1000;
-        struct tm info; localtime_r(&epoch, &info);
-        char data[20]; strftime(data, sizeof(data), "%Y-%m-%d %H:%M:%S", &info);
-        doc["data_hora"] = data;
-        doc.remove("_boot_id"); doc.remove("_uptime_ms");
-        char payload[496]; size_t n = measureJson(doc);
-        pronto = n < sizeof(payload);
-        if (pronto) {
-          serializeJson(doc, payload, sizeof(payload));
-          // Persistir a hora resolvida ANTES do POST mantém todos os reenvios iguais.
-          pronto = filaLocal.atualizarFrente(payload, n);
-        }
+      if (!filaLocal.descartarSemHorario(registro.sequencia, doc["data_hora"] | "")) {
+        Serial.println("[FILA] ERRO ao descartar registro sem horário; fila suspensa");
+        return;
       }
-      if (!pronto) Serial.println("[FILA] Aguardando horário confiável; registro preservado (reinício antes de NTP exige tratamento)");
+      Serial.printf("[LOCAL] DESCARTADA: leitura antiga sem horário | UUID=%s | pendentes=%u\r\n",
+          doc["leitura_id"] | "", unsigned(filaLocal.pendentes()));
+      esperaFila = 0;
+      ultimaTentativaFila = millis();
+      continue;
     }
     int codigo = -1;
     if (pronto) {

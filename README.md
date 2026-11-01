@@ -11,8 +11,8 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e TDS. Não reproduz calibração química de sensores reais. |
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
-| Falhas de envio | Fila LittleFS de 20 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | Projeto separado; o código atual lê um potenciômetro para pH e usa valores fixos para temperatura, turbidez e TDS. Sensores reais e calibração ainda precisam ser integrados. |
+| Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
+| Protótipo físico | pH com dois pontos confirmados, DS18B20 real e turbidez relativa em percentual; TDS temporariamente desativado (`null`). Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -265,21 +265,21 @@ Configurações alteradas pelo gerador também podem ganhar backups. Não execut
 | Configuração | Onde alterar | Valor atual |
 |---|---|---|
 | Espera após coleta | `SEND_INTERVAL`, em cada `main.cpp` | 10000 ms |
-| Amostras analógicas | `NUM_AMOSTRAS` / `TEMPO_ENTRE_AMOSTRAS`, em cada firmware | 10 amostras; 500 ms entre elas |
+| Amostras analógicas | Simulação: `NUM_AMOSTRAS` / `TEMPO_ENTRE_AMOSTRAS`; físico: `SensoresFisicos.h` | Simulação: média de 10, 500 ms; físico: mediana de 31, 10 ms |
 | Timeout HTTP | `HTTP_TIMEOUT_MS`, em cada firmware | 60000 ms |
 | Timeout de conexão | `HTTP_CONNECT_TIMEOUT_MS`, em cada firmware | 15000 ms |
-| Capacidade local | `CAPACIDADE_FILA`, em `include/FilaLocal.h` | 20 leituras |
+| Capacidade local | `CAPACIDADE_FILA`, em `include/FilaLocal.h` | 1.000 leituras |
 | Reenvio após falha | `RETRY_INICIAL_MS` / `RETRY_MAXIMO_MS`, no mesmo header | 5 até 60 segundos |
 | Envio de pendências | `ENVIOS_POR_CICLO`, no mesmo header | Até 2 por ciclo |
 | Consulta SCADA | `INTERVALO_ATUALIZACAO`, em `SCADA/script.js` | 5000 ms após consulta |
 
 Esses valores não representam um envio obrigatório a cada 10 segundos. Amostragem e POST somam tempo; os envios são bloqueantes e podem atrasar novas coletas. No Wokwi, tempo simulado e tempo real também podem diferir.
 
-A fila cresce até 20 slots de 512 bytes, sem pré-alocar um arquivo grande. Cada leitura é salva antes do POST e só liberada após confirmação válida. Ao encher, preserva pendências e rejeita novas leituras, que podem ser perdidas. Não altere capacidade com pendências.
+A fila cresce até 1.000 slots de 512 bytes: **512.000 bytes (500 KiB)** de registros, além dos metadados do LittleFS. Com intervalo efetivo de 10 segundos e fila inicialmente vazia, isso corresponde a aproximadamente **2 h 46 min 40 s** de leituras sem envio; é uma estimativa de armazenamento, não de bateria, e os POSTs podem atrasar a coleta. Cada leitura é salva antes do POST e só liberada após confirmação válida. Ao encher, preserva pendências e rejeita novas leituras, que podem ser perdidas. Esta versão transfere automaticamente as pendências da fila antiga de 20 posições, mantendo UUIDs e horários. Outras mudanças de capacidade exigem migração própria. Veja os testes, cálculos e referências em [FILA_LOCAL.md](firmware/esp32/FILA_LOCAL.md).
 
 O `id` auto incrementado identifica a linha no MySQL. O `leitura_id` UUID identifica a medição desde o ESP32. A restrição única `(equipamento_id, leitura_id)` impede inserções duplicadas. Há tolerância numérica de 1e-6 ao comparar reenvios devido ao tipo FLOAT.
 
-Sem NTP, valores ficam guardados com boot e uptime. Se sincronizar no mesmo boot, o horário estimado é persistido antes do envio. Reinício antes dessa resolução pode deixar a pendência sem horário confiável e bloquear a ordem de envio; não há RTC nesta versão.
+Após cada reinício, a coleta fica suspensa até o SNTP confirmar a sincronização do relógio. O firmware não lê os sensores nem gera uma nova medição enquanto isso não ocorrer. Antes de gravar na fila, também exige relógio válido e `data_hora` preenchida. Após sincronizar, continua coletando com o relógio local mesmo se perder Wi-Fi/API. Não há gravação sem horário nem reconstrução por uptime. Não há RTC externo nesta versão. Pendências sem horário criadas por versões anteriores são descartadas ao chegar à frente da fila, com aviso `[LOCAL] DESCARTADA`. As leituras com data são preservadas para envio normal.
 
 Firmware usa NTP.br e fuso `BRT3`; a API guarda DATETIME no horário de Brasília e devolve ISO 8601 com offset. O SCADA converte esse instante para o fuso do visitante.
 
@@ -306,11 +306,11 @@ Resposta típica de gravação:
 }
 ```
 
-Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `temperatura`, `tds` e `data_hora`. pH, turbidez e temperatura são obrigatórios; TDS pode ser NULL. UUID exige equipamento e horário. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
+Campos da tabela: `id`, `equipamento_id`, `leitura_id`, `ph`, `turbidez`, `turbidez_unidade`, `temperatura`, `tds` e `data_hora`. pH, temperatura e um dos campos de entrada `turbidez` (NTU) ou `turbidez_relativa` (percentual) são obrigatórios; TDS pode ser NULL. UUID exige equipamento e horário. A identificação aceita letras acentuadas, como `físico_1`. Clientes sem UUID continuam aceitos, mas sem deduplicação. A validação atual não substitui calibração nem validação completa de limites físicos.
 
 ### Atualização do campo TDS
 
-TDS representa o total de sólidos dissolvidos, em **ppm**, no firmware, na API, no banco e no SCADA. O limite de alerta de 250 ppm continua provisório; a renomeação não define uma faixa de qualidade da água nem calibra os sensores.
+TDS representa o total de sólidos dissolvidos, em **ppm**, no firmware, na API, no banco e no SCADA. A faixa configurada no SCADA é de **50 a 300 ppm**, incluindo os extremos; valores abaixo de 50 ppm ou acima de 300 ppm geram alerta. Esses limites foram escolhidos para o projeto e não certificam potabilidade nem substituem a calibração dos sensores.
 
 ## 8. Publicar no Render
 
@@ -341,9 +341,17 @@ pio run -d firmware/esp32/prototipo --target upload
 pio device monitor --baud 115200
 ```
 
-Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. Confira a montagem/pinagem física e alimentação antes de gravar. O código atual mede pH por potenciômetro no GPIO 34; os demais valores físicos ainda são constantes. Não use isso como medição calibrada de água.
+Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. A configuração atual do físico usa **pH no GPIO 34**, **turbidez no GPIO 32** e **DS18B20 no GPIO 14**, conforme o código de teste enviado pelo usuário. Essa pinagem de turbidez difere do esquema anterior (GPIO 35); confira a ligação antes de gravar.
 
-A fila compartilha a implementação com a simulação. Não execute `erase`/`uploadfs` com pendências. A preservação após falta de energia precisa ser validada no hardware; reiniciar ou reabrir Wokwi pode começar uma flash vazia.
+O pH utiliza os pontos confirmados de **1,57 V → pH 7** e **1,95 V → pH 4**, na escala `ADC / 4095 × 3,3` usada na calibração, já após o divisor. Os analógicos usam a mediana de 31 amostras, com 10 ms entre amostras. A temperatura é lida no DS18B20, sem valor fixo.
+
+O TDS está temporariamente desativado nas novas aquisições e é enviado como `null`, aparecendo como `--` no SCADA. Os registros históricos e as simulações são preservados.
+
+A turbidez física utiliza a **queda percentual do sinal**, com referência inicial `ADC_AGUA_REFERENCIA = 2709` do teste fornecido; não é NTU nem calibração com padrão conhecido. O JSON usa `turbidez_relativa`, e a API registra sua unidade. O SCADA exibe `% relativo`, sem aplicar o alerta de 50 NTU a essa grandeza. A curva genérica anterior foi removida do fluxo físico.
+
+**Publicar a API e o SCADA atualizados antes de usar este firmware.** A API adiciona `turbidez_unidade` à tabela existente, preservando as linhas. Uma API antiga rejeita o novo payload relativo, em vez de registrá-lo como NTU; a leitura continua na fila. Detalhes, fórmulas, logs e testes estão em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
+
+A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se um sensor ativo tiver leitura inválida, a nova medição completa é recusada; as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 
 ## 10. Validação alinhada ao documento do TCC
 
@@ -362,7 +370,7 @@ As seções de testes e análise de riscos do PDF (páginas 35–37) preveem fal
 
 Procedimentos completos: [deduplicação](firmware/esp32/DEDUPLICACAO.md) e [fila local](firmware/esp32/FILA_LOCAL.md). Comece os testes de queda após NTP sincronizar e **não pare/recompile o Wokwi durante a interrupção**.
 
-Continuam pendentes a integração/calibração dos sensores reais, gráficos históricos, definição final das faixas de alerta e ensaios físicos de energia e funcionamento prolongado. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
+Continuam pendentes a validação física desta integração, a conferência da referência relativa de turbidez, a recuperação/reintegração do TDS, gráficos históricos e ensaios físicos de energia e funcionamento prolongado. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
 
 ## Problemas comuns
 

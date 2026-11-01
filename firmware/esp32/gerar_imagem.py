@@ -6,10 +6,15 @@ def gerar(source, target, env):
     import os
     import subprocess
     platform = env.PioPlatform()
-    tool = os.path.join(platform.get_package_dir('tool-esptoolpy'), 'esptool.py')
+    # Plataformas recentes usam um executável; as anteriores fornecem esptool.py.
+    if 'tool-esptool' in platform.packages:
+        executable = [os.path.join(platform.get_package_dir('tool-esptool'), 'esptool')]
+    else:
+        tool = os.path.join(platform.get_package_dir('tool-esptoolpy'), 'esptool.py')
+        executable = [env.subst('$PYTHONEXE'), tool]
     framework = platform.get_package_dir('framework-arduinoespressif32')
     build = env.subst('$BUILD_DIR')
-    command = [env.subst('$PYTHONEXE'), tool, '--chip', 'esp32', 'merge_bin',
+    command = executable + ['--chip', 'esp32', 'merge_bin',
                '-o', os.path.join(build, 'firmware-merged.bin'),
                '--flash_mode', 'dio', '--flash_freq', '40m', '--flash_size', '4MB',
                '0x1000', os.path.join(build, 'bootloader.bin'),
