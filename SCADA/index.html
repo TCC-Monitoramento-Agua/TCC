@@ -220,13 +220,25 @@
             </svg>
           </div>
 
-          <!-- Menu Dropdown Flutuante de Seleção de Equipamento -->
-          <div class="dropdown-equipamentos oculto" id="dropdownEquipamentos" role="listbox" aria-label="Selecione o equipamento para filtrar">
+          <!-- Menu Dropdown Flutuante de Seleção Múltipla de Equipamento -->
+          <div class="dropdown-equipamentos oculto" id="dropdownEquipamentos" role="listbox" aria-label="Selecione um ou mais equipamentos para filtrar" aria-multiselectable="true">
             <div class="dropdown-header">
-              <span>Filtrar por Equipamento</span>
+              <div class="dropdown-header-titulo">
+                <span>Filtrar por Equipamento</span>
+                <span class="dropdown-contador-badge" id="dropdownContadorBadge">Todos</span>
+              </div>
+              <div class="dropdown-header-acoes">
+                <button type="button" id="btnDropdownSelecionarTodos" class="btn-dropdown-link">Marcar Todos</button>
+                <span class="separador-acoes">•</span>
+                <button type="button" id="btnDropdownLimpar" class="btn-dropdown-link">Limpar</button>
+              </div>
             </div>
             <div class="dropdown-opcoes" id="listaOpcoesEquipamentos">
               <!-- Gerado dinamicamente via script.js -->
+            </div>
+            <div class="dropdown-rodape">
+              <span class="dropdown-dica" id="dropdownDica">Selecione 1 ou mais equipamentos</span>
+              <button type="button" id="btnDropdownConcluir" class="btn-dropdown-concluir">Concluir</button>
             </div>
           </div>
         </div>
@@ -275,14 +287,14 @@
           </div>
           <div>
             <h2>Histórico Recente</h2>
-            <span class="painel-desc" id="descricaoTabela">Últimas 10 medições consolidadas no banco de dados</span>
+            <span class="painel-desc" id="descricaoTabela">Últimas 15 medições consolidadas no banco de dados</span>
           </div>
         </div>
         <div class="tabela-badges-grupo">
           <button id="btnLimparFiltro" class="btn-limpar-filtro oculto" type="button" title="Voltar a exibir todos os equipamentos">
             Limpar Filtro ✕
           </button>
-          <span class="badge-contagem" id="badgeContagemTabela">10 registros máx.</span>
+          <span class="badge-contagem" id="badgeContagemTabela">15 registros máx.</span>
         </div>
       </div>
 
