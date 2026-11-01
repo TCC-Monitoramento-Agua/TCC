@@ -10,7 +10,7 @@
 #define ONEWIRE_PIN 14
 #define PH_PIN 34
 #define TURB_PIN 35
-#define ORP_PIN 32
+#define TDS_PIN 32
 
 // Endpoint (HTTPS com WiFiClientSecure)
 const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
@@ -106,10 +106,10 @@ float normalized = (float)raw / 4095.0;
 return minVal + normalized * (maxVal - minVal);
 }
 
-void lerMediasAnalogicas(float& ph, float& turbidez, float& orp) {
+void lerMediasAnalogicas(float& ph, float& turbidez, float& tds) {
   float somaPh = 0.0;
   float somaTurbidez = 0.0;
-  float somaOrp = 0.0;
+  float somaTds = 0.0;
 
   #if LOG_DETALHADO
 Serial.println("\n[SENSOR] Iniciando 10 amostras...");
@@ -118,11 +118,11 @@ Serial.println("\n[SENSOR] Iniciando 10 amostras...");
   for (int i = 0; i < NUM_AMOSTRAS; i++) {
     float leituraPh = mapAnalogToRange(PH_PIN, 6.5, 8.5);
     float leituraTurbidez = mapAnalogToRange(TURB_PIN, 1.0, 50.0);
-    float leituraOrp = mapAnalogToRange(ORP_PIN, 200.0, 300.0);
+    float leituraTds = mapAnalogToRange(TDS_PIN, 200.0, 300.0);
 
     somaPh += leituraPh;
     somaTurbidez += leituraTurbidez;
-    somaOrp += leituraOrp;
+    somaTds += leituraTds;
 
 #if LOG_DETALHADO
     Serial.print("[SENSOR] Amostra ");
@@ -131,8 +131,8 @@ Serial.println("\n[SENSOR] Iniciando 10 amostras...");
     Serial.print(leituraPh, 2);
     Serial.print(" | Turbidez=");
     Serial.print(leituraTurbidez, 2);
-    Serial.print(" | ORP=");
-    Serial.println(leituraOrp, 2);
+    Serial.print(" | TDS=");
+    Serial.println(leituraTds, 2);
 #endif
 
     if (i < NUM_AMOSTRAS - 1) {
@@ -142,7 +142,7 @@ Serial.println("\n[SENSOR] Iniciando 10 amostras...");
 
   ph = somaPh / NUM_AMOSTRAS;
   turbidez = somaTurbidez / NUM_AMOSTRAS;
-  orp = somaOrp / NUM_AMOSTRAS;
+  tds = somaTds / NUM_AMOSTRAS;
 }
 
 float lerMediaTemperatura() {
@@ -226,8 +226,8 @@ int enviarPostComRetry(const String& payload) {
 void sendReading() {
 // Leitura dos sensores
 float temperature = lerMediaTemperatura();
-float ph, turbidez, orp;
-lerMediasAnalogicas(ph, turbidez, orp);
+float ph, turbidez, tds;
+lerMediasAnalogicas(ph, turbidez, tds);
 
 StaticJsonDocument<1024> doc;
 doc["leitura_id"] = gerarLeituraId();
@@ -236,7 +236,7 @@ doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
 doc["ph"] = ph;
 doc["turbidez"] = turbidez;
 doc["temperatura"] = temperature;
-doc["orp"] = orp;
+doc["tds"] = tds;
 doc["data_hora"] = getTimestamp();
 
 guardarMedicaoLocal(doc);
@@ -254,7 +254,7 @@ Serial.println("================================\n");
 Serial.println("[SETUP] Inicializando GPIO e sensores...");
 analogSetPinAttenuation(PH_PIN, ADC_11db);
 analogSetPinAttenuation(TURB_PIN, ADC_11db);
-analogSetPinAttenuation(ORP_PIN, ADC_11db);
+analogSetPinAttenuation(TDS_PIN, ADC_11db);
 
 sensors.begin();
 Serial.println("[SETUP] Sensores inicializados.\n");

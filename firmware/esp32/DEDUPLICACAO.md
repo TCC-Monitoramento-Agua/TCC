@@ -51,7 +51,7 @@ Se o primeiro POST tiver sido salvo, mas sua resposta se perder, uma tentativa s
 No MySQL Workbench, substitua o UUID abaixo pelo mostrado na serial:
 
 ```sql
-SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, orp, data_hora
+SELECT id, equipamento_id, leitura_id, ph, turbidez, temperatura, tds, data_hora
 FROM leituras
 WHERE equipamento_id = 'esp32-001'
   AND leitura_id = 'UUID_COPIADO_DA_SERIAL';

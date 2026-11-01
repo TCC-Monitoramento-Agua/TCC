@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS leituras (
     ph FLOAT NOT NULL,
     turbidez FLOAT NOT NULL,
     temperatura FLOAT NOT NULL,
-    orp FLOAT NULL,
+    tds FLOAT NULL,
     data_hora DATETIME NOT NULL,
     UNIQUE KEY uq_equipamento_leitura (equipamento_id, leitura_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
