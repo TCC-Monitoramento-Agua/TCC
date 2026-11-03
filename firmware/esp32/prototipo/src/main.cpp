@@ -7,6 +7,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "SensoresFisicos.h"
+#include "DiagnosticoLocal.h"
 
 OneWire oneWire(TEMPERATURA_PIN);
 DallasTemperature sensorTemperatura(&oneWire);
@@ -25,7 +26,18 @@ const char* serverUrl = "https://api-monitoramento-agua.onrender.com/leituras";
 #define TESTAR_DUPLICACAO 0
 #endif
 
+ConsoleDiagnostico consoleDiagnostico(Serial);
+#define Serial consoleDiagnostico
+DiagnosticoLocal diagnostico(consoleDiagnostico, EQUIPAMENTO_ID);
+
 #include "FilaLocal.h"
+
+uint16_t ultimoAdcPh = 0, ultimoAdcTurbidez = 0;
+
+void atualizarEstadoDiagnostico() {
+  consoleDiagnostico.fila(filaPronta && filaLocal.saudavel(), filaLocal.pendentes(),
+      CAPACIDADE_FILA, relogioColeta.podeColetar(time(nullptr)));
+}
 
 // NTP.br fornece a hora UTC; o ESP32 aplica o fuso de Brasília automaticamente.
 // Na sintaxe POSIX, BRT3 representa UTC-3, sem horário de verão.
@@ -106,6 +118,7 @@ uint16_t lerMedianaAdc(uint8_t pino) {
 
 float lerPhCalibrado() {
   const uint16_t adc = lerMedianaAdc(PH_PIN);
+  ultimoAdcPh = adc;
   const float tensao = tensaoEscalaCalibracao(adc);
   const float ph = converterPh(tensao);
   Serial.printf("[PH] GPIO=%u | ADC=%u | tensão na escala da calibração=%.3f V | pH=%.2f\r\n",
@@ -119,13 +132,15 @@ float lerPhCalibrado() {
 
 float lerTurbidezRelativa() {
   const uint16_t adc = lerMedianaAdc(TURBIDEZ_FISICA_PIN);
+  ultimoAdcTurbidez = adc;
   const float turbidez = turbidezRelativa(adc);
-  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%u | queda do sinal=%.1f %% (não é NTU)\r\n",
-      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), ADC_AGUA_REFERENCIA, turbidez);
   if (adc == 0 || adc == 4095 || !std::isfinite(turbidez)) {
-    Serial.println("[TURBIDEZ] ERRO: entrada saturada ou referência inválida; confira a ligação");
+    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | sem medição: entrada saturada ou referência inválida\r\n",
+        TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc));
     return NAN;
   }
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%u | queda do sinal=%.1f %% (não é NTU)\r\n",
+      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), ADC_AGUA_REFERENCIA, turbidez);
   return turbidez;
 }
 
@@ -146,6 +161,7 @@ int enviarPostComRetry(const String& payload) {
   if (deserializeJson(original, payload)) return -1;
   const String leituraId = original["leitura_id"].as<String>();
   const String equipamentoId = original["equipamento_id"].as<String>();
+  consoleDiagnostico.envio(true);
   WiFiClientSecure client;
   client.setInsecure(); // Configuração HTTPS existente.
   HTTPClient http;
@@ -153,6 +169,7 @@ int enviarPostComRetry(const String& payload) {
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (!http.begin(client, serverUrl)) {
     Serial.println("[ENVIO] Não foi possível iniciar HTTPS; leitura continua no ESP32");
+    consoleDiagnostico.envio(false, -1);
     client.stop(); return -1;
   }
   http.addHeader("Content-Type", "application/json");
@@ -170,6 +187,7 @@ int enviarPostComRetry(const String& payload) {
       (original["turbidez_relativa"].isNull() || ack["turbidez_unidade"].as<String>() == "percentual_relativo") &&
       ack["id"].is<uint64_t>() && ack["id"].as<uint64_t>() > 0;
   if (confirmou) {
+    consoleDiagnostico.envio(false, codigo, true);
     Serial.printf("[BANCO] CONFIRMADO | UUID=%s | id=%llu | HTTP=%d | duplicada=%s\r\n",
         leituraId.c_str(), static_cast<unsigned long long>(ack["id"].as<uint64_t>()),
         codigo, ack["duplicada"].as<bool>() ? "sim" : "não");
@@ -178,6 +196,8 @@ int enviarPostComRetry(const String& payload) {
   Serial.printf("[ENVIO] FALHOU | UUID=%s | HTTP=%d | %s\r\n", leituraId.c_str(), codigo,
       codigo < 0 ? resposta.c_str() : codigo == 409 ? "UUID em conflito" :
       (codigo == 200 || codigo == 201) ? "confirmação inválida" : "API não confirmou gravação");
+  if (codigo > 0 && resposta.length()) Serial.printf("[ENVIO] Detalhe da API: %.300s\r\n", resposta.c_str());
+  consoleDiagnostico.envio(false, codigo);
   return -1;
 }
 
@@ -187,6 +207,8 @@ void sendReading() {
   const float ph = lerPhCalibrado();
   const float temperatura = lerTemperatura();
   const float turbidez = lerTurbidezRelativa();
+  consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
+      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");
     return;
@@ -204,6 +226,7 @@ void sendReading() {
   doc["data_hora"] = horarioColeta;
 
   guardarMedicaoLocal(doc);
+  atualizarEstadoDiagnostico();
 }
 
 void setup() {
@@ -224,7 +247,9 @@ void setup() {
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();
+  atualizarEstadoDiagnostico();
   connectWiFi();
+  if (!diagnostico.iniciar()) Serial.println("[DIAGNOSTICO] ERRO: não foi possível iniciar a página local");
 
   Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
   sntp_set_time_sync_notification_cb(aoSincronizarHorario);
@@ -260,6 +285,8 @@ void loop() {
     sendReading(); // Após sincronizar o relógio, continua coletando mesmo sem Wi-Fi/API.
     lastSend = millis();
   }
+  atualizarEstadoDiagnostico();
   processarFilaLocal(enviarPostComRetry);
+  atualizarEstadoDiagnostico();
   delay(100);
 }
