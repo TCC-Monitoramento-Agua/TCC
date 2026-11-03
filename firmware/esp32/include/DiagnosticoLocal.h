@@ -7,8 +7,9 @@
 #include "LogDiagnostico.h"
 
 struct EstadoDiagnostico {
-  float ph = NAN, temperatura = NAN, turbidez = NAN;
-  uint16_t phAdc = 0, turbidezAdc = 0, referencia = 0;
+  float ph = NAN, temperatura = NAN, turbidez = NAN, tds = NAN;
+  uint16_t phAdc = 0, turbidezAdc = 0, referencia = 0, tdsAdc = 0;
+  uint32_t tdsMv = 0;
   float phVolts = NAN, turbidezVolts = NAN;
   uint32_t leituraMs = 0, envioMs = 0;
   uint16_t pendentes = 0, capacidade = 0;
@@ -36,11 +37,13 @@ class ConsoleDiagnostico : public Print {
     return enviados;
   }
   void leitura(float ph, float temperatura, float turbidez, uint16_t phAdc,
-               uint16_t turbidezAdc, float phVolts, float turbidezVolts, uint16_t referencia) {
+               uint16_t turbidezAdc, float phVolts, float turbidezVolts, uint16_t referencia,
+               float tds, uint16_t tdsAdc, uint32_t tdsMv) {
     portENTER_CRITICAL(&mutex);
     estado.ph = ph; estado.temperatura = temperatura; estado.turbidez = turbidez;
     estado.phAdc = phAdc; estado.turbidezAdc = turbidezAdc;
     estado.phVolts = phVolts; estado.turbidezVolts = turbidezVolts;
+    estado.tds = tds; estado.tdsAdc = tdsAdc; estado.tdsMv = tdsMv;
     estado.referencia = referencia; estado.leituraMs = millis(); estado.leu = true;
     estado.medicaoValida = std::isfinite(ph) && std::isfinite(temperatura) && std::isfinite(turbidez);
     portEXIT_CRITICAL(&mutex);
@@ -80,8 +83,9 @@ static const char PAGINA_DIAGNOSTICO[] PROGMEM = R"html(<!doctype html>
 <div class="grade"><section class="cartao">pH<strong id="ph">--</strong><div class="detalhe" id="phInfo">Aguardando leitura</div></section>
 <section class="cartao">Temperatura<strong id="temperatura">--</strong><div class="detalhe">DS18B20 · GPIO 14</div></section>
 <section class="cartao">Turbidez relativa<strong id="turbidez">--</strong><div class="detalhe" id="turbidezInfo">Queda do sinal; não é NTU.</div></section>
+<section class="cartao">TDS estimado<strong id="tds">--</strong><div class="detalhe" id="tdsInfo">GPIO 35 · Sem calibração com padrão</div></section>
 <section class="cartao">Fila e envio<strong id="fila">--</strong><div class="detalhe" id="envio">Aguardando estado</div></section></div>
-<p id="estado">Aguardando informações…</p><p>TDS no GPIO35: tensão e estimativa em ppm nos logs. Logs recentes ficam na RAM e são perdidos ao reiniciar. A página continua acessível durante tentativas de envio à API.</p>
+<p id="estado">Aguardando…</p><p>Logs em RAM; perdidos ao reiniciar.</p>
 <nav><button id="pausa">Pausar atualização</button><button id="limpar">Limpar tela</button><button id="baixar">Baixar logs</button><label><input type="checkbox" id="rolar" checked> Rolar automaticamente</label></nav>
 <pre id="logs" aria-label="Logs do dispositivo"></pre></main>
 <script>
@@ -91,11 +95,13 @@ function renderizar(d){const e=d.estado;if(sessao!==null&&sessao!==d.sessao){lin
 el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V`:'Aguardando leitura';
 el('temperatura').textContent=numero(e.temperatura)+' °C';el('turbidez').textContent=numero(e.turbidez_relativa,1)+' %';
 el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nEscala ADC: ${numero(e.turbidez_volts,3)} V\nReferência: ${e.referencia} ADC; não é NTU.`:'Aguardando leitura';
+el('tds').textContent=numero(e.tds,1)+(Number.isFinite(e.tds)?' ppm':'');
+el('tdsInfo').textContent=e.leu?`GPIO 35 · ADC ${e.tds_adc}\nGPIO: ${e.tds_mv} mV\nCompensação térmica; sem calibração.`:'Aguardando leitura';
 el('fila').textContent=`${e.pendentes} / ${e.capacidade}`;
 el('envio').textContent=e.enviando?'Enviando à API…':e.http===0?'Nenhum envio concluído':`Último HTTP: ${e.http}\n${e.confirmou?'Gravação confirmada':'Sem confirmação; leitura mantida'}`;
 const idade=e.leu?Math.floor((d.uptime_ms-e.leitura_ms)>>>0)/1000:null;
 el('estado').textContent=`${d.equipamento} · IP ${d.ip} · Wi-Fi ${d.rssi} dBm · Relógio ${e.horario?'sincronizado':'aguardando NTP'} · Fila ${e.fila_saudavel?'pronta':'indisponível'} · ${idade===null?'Sem leitura':`Última leitura há ${idade.toFixed(0)} s (${e.medicao_valida?'válida':'inválida'})`}`;
-if(d.perdidos)linhas.push('--- Algumas linhas antigas saíram do buffer do dispositivo ---');
+if(d.perdidos)linhas.push('--- Buffer: linhas antigas sobrescritas ---');
 for(const l of d.logs){if(l.id>cursor){linhas.push(`[${(l.ms/1000).toFixed(1)} s] ${l.texto}`);cursor=l.id}}
 if(linhas.length>500)linhas=linhas.slice(-500);el('logs').textContent=linhas.join('\n');if(el('rolar').checked)el('logs').scrollTop=el('logs').scrollHeight;
 el('conexao').textContent='Conectado ao ESP32 · atualização local';el('conexao').className='ok'}
@@ -131,6 +137,7 @@ class DiagnosticoLocal {
     doc["perdidos"] = cursor && primeiro > cursor + 1;
     JsonObject e = doc.createNestedObject("estado");
     e["ph"] = estado.ph; e["temperatura"] = estado.temperatura; e["turbidez_relativa"] = estado.turbidez;
+    e["tds"] = estado.tds; e["tds_adc"] = estado.tdsAdc; e["tds_mv"] = estado.tdsMv;
     e["ph_adc"] = estado.phAdc; e["turbidez_adc"] = estado.turbidezAdc;
     e["ph_volts"] = estado.phVolts; e["turbidez_volts"] = estado.turbidezVolts; e["referencia"] = estado.referencia;
     e["leu"] = estado.leu; e["leitura_ms"] = estado.leituraMs; e["medicao_valida"] = estado.medicaoValida;

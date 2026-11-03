@@ -34,6 +34,8 @@ DiagnosticoLocal diagnostico(consoleDiagnostico, EQUIPAMENTO_ID);
 #include "FilaLocal.h"
 
 uint16_t ultimoAdcPh = 0, ultimoAdcTurbidez = 0;
+uint16_t ultimoAdcTds = 0;
+uint32_t ultimosMvTds = 0;
 
 void atualizarEstadoDiagnostico() {
   consoleDiagnostico.fila(filaPronta && filaLocal.saudavel(), filaLocal.pendentes(),
@@ -169,6 +171,8 @@ float lerTds(float temperatura) {
   std::sort(amostrasMv, amostrasMv + NUM_AMOSTRAS_FISICAS);
   const uint16_t adc = amostrasAdc[NUM_AMOSTRAS_FISICAS / 2];
   const uint32_t mv = amostrasMv[NUM_AMOSTRAS_FISICAS / 2];
+  ultimoAdcTds = adc;
+  ultimosMvTds = mv;
   const float voltsModulo = tensaoModuloTds(mv);
   const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
   Serial.printf("[TDS] GPIO=%u | ADC=%u | GPIO=%lu mV | módulo estimado=%.3f V (divisor 10k/15k) | temperatura=%.2f C\r\n",
@@ -234,7 +238,8 @@ void sendReading() {
   const float turbidez = lerTurbidezRelativa();
   const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
-      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA);
+      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA,
+      tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");
     return;
