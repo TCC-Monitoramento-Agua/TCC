@@ -7,6 +7,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "SensoresFisicos.h"
+#include "ConversaoTds.h"
 #include "DiagnosticoLocal.h"
 
 OneWire oneWire(TEMPERATURA_PIN);
@@ -156,6 +157,30 @@ float lerTemperatura() {
   return temperatura;
 }
 
+float lerTds(float temperatura) {
+  uint16_t amostrasAdc[NUM_AMOSTRAS_FISICAS];
+  uint32_t amostrasMv[NUM_AMOSTRAS_FISICAS];
+  for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
+    amostrasAdc[i] = analogRead(TDS_FISICO_PIN);
+    amostrasMv[i] = analogReadMilliVolts(TDS_FISICO_PIN);
+    if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
+  }
+  std::sort(amostrasAdc, amostrasAdc + NUM_AMOSTRAS_FISICAS);
+  std::sort(amostrasMv, amostrasMv + NUM_AMOSTRAS_FISICAS);
+  const uint16_t adc = amostrasAdc[NUM_AMOSTRAS_FISICAS / 2];
+  const uint32_t mv = amostrasMv[NUM_AMOSTRAS_FISICAS / 2];
+  const float voltsModulo = tensaoModuloTds(mv);
+  const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
+  Serial.printf("[TDS] GPIO=%u | ADC=%u | GPIO=%lu mV | módulo estimado=%.3f V (divisor 10k/15k) | temperatura=%.2f C\r\n",
+      TDS_FISICO_PIN, adc, static_cast<unsigned long>(mv), voltsModulo, temperatura);
+  if (adc == 0 || adc == 4095 || mv == 0 || !std::isfinite(ppm)) {
+    Serial.println("[TDS] Indisponível: confira sinal, divisor e temperatura; enviado null, sem bloquear os demais sensores");
+    return NAN;
+  }
+  Serial.printf("[TDS] Estimativa=%.1f ppm | sem calibração com padrão TDS\r\n", ppm);
+  return ppm;
+}
+
 int enviarPostComRetry(const String& payload) {
   StaticJsonDocument<512> original;
   if (deserializeJson(original, payload)) return -1;
@@ -207,6 +232,7 @@ void sendReading() {
   const float ph = lerPhCalibrado();
   const float temperatura = lerTemperatura();
   const float turbidez = lerTurbidezRelativa();
+  const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
       tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
@@ -222,7 +248,8 @@ void sendReading() {
   // Campo distinto impede que uma API antiga grave o percentual como NTU.
   doc["turbidez_relativa"] = turbidez;
   doc["temperatura"] = temperatura;
-  doc["tds"] = nullptr; // Sensor temporariamente desativado; não enviar zero fictício.
+  if (std::isfinite(tds)) doc["tds"] = tds;
+  else doc["tds"] = nullptr; // Falha no TDS não vira zero nem bloqueia os demais.
   doc["data_hora"] = horarioColeta;
 
   guardarMedicaoLocal(doc);
@@ -240,10 +267,11 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(PH_PIN, ADC_11db);
   analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
+  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_11db);
   sensorTemperatura.begin();
   sensorTemperatura.setResolution(12);
   sensorTemperatura.setWaitForConversion(true);
-  Serial.println("[SENSORES] pH=GPIO34 | turbidez relativa=GPIO32 | DS18B20=GPIO14 | TDS desativado");
+  Serial.println("[SENSORES] pH=GPIO34 | turbidez relativa=GPIO32 | DS18B20=GPIO14 | TDS=GPIO35 (estimativa)");
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();

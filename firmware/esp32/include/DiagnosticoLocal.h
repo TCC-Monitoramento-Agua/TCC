@@ -81,7 +81,7 @@ static const char PAGINA_DIAGNOSTICO[] PROGMEM = R"html(<!doctype html>
 <section class="cartao">Temperatura<strong id="temperatura">--</strong><div class="detalhe">DS18B20 · GPIO 14</div></section>
 <section class="cartao">Turbidez relativa<strong id="turbidez">--</strong><div class="detalhe" id="turbidezInfo">Queda do sinal; não é NTU.</div></section>
 <section class="cartao">Fila e envio<strong id="fila">--</strong><div class="detalhe" id="envio">Aguardando estado</div></section></div>
-<p id="estado">Aguardando informações…</p><p>TDS desativado. Logs recentes ficam na RAM e são perdidos ao reiniciar. A página continua acessível durante tentativas de envio à API.</p>
+<p id="estado">Aguardando informações…</p><p>TDS no GPIO35: tensão e estimativa em ppm nos logs. Logs recentes ficam na RAM e são perdidos ao reiniciar. A página continua acessível durante tentativas de envio à API.</p>
 <nav><button id="pausa">Pausar atualização</button><button id="limpar">Limpar tela</button><button id="baixar">Baixar logs</button><label><input type="checkbox" id="rolar" checked> Rolar automaticamente</label></nav>
 <pre id="logs" aria-label="Logs do dispositivo"></pre></main>
 <script>
