@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="100%" height="100%">
+  <defs>
+    <linearGradient id="scada-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+  </defs>
+  <!-- Fundo com gradiente e cantos arredondados idêntico ao SCADA -->
+  <rect width="44" height="44" rx="12" fill="url(#scada-grad)" />
+  <rect x="0.5" y="0.5" width="43" height="43" rx="11.5" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="1" />
+  
+  <!-- Ícone da Gota d'Água Centralizado -->
+  <g transform="translate(10, 10)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+    <path d="M12 12a3 3 0 0 1 3 3" />
+  </g>
+</svg>
+
