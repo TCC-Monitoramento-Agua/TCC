@@ -12,7 +12,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | pH com dois pontos confirmados, DS18B20 real e turbidez relativa em percentual; TDS temporariamente desativado (`null`). Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
+| Protótipo físico | pH com dois pontos confirmados, DS18B20 real, turbidez relativa em percentual e TDS estimado no GPIO35. Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -345,13 +345,13 @@ Se houver várias portas, informe a porta correta com `--upload-port` no upload 
 
 O pH utiliza os pontos confirmados de **1,57 V → pH 7** e **1,95 V → pH 4**, na escala `ADC / 4095 × 3,3` usada na calibração, já após o divisor. Os analógicos usam a mediana de 31 amostras, com 10 ms entre amostras. A temperatura é lida no DS18B20, sem valor fixo.
 
-O TDS está temporariamente desativado nas novas aquisições e é enviado como `null`, aparecendo como `--` no SCADA. Os registros históricos e as simulações são preservados.
+O TDS foi reativado no **GPIO35**: os logs apresentam ADC, milivolts no GPIO e tensão reconstruída pelo divisor10k/15k. Os ppm são estimados pela curva de referência GravityTDS, com temperatura medida pelo DS18B20, sem calibração com padrão. TDS inválido é enviado como `null`, aparecendo como `--`, sem bloquear os outros sensores. A aquisição reativada ainda precisa ser conferida no físico; registros históricos e simulações são preservados.
 
 A turbidez física utiliza a **queda percentual do sinal**, com referência inicial `ADC_AGUA_REFERENCIA = 2709` do teste fornecido; não é NTU nem calibração com padrão conhecido. O JSON usa `turbidez_relativa`, e a API registra sua unidade. O SCADA exibe `% relativo`, sem aplicar o alerta de 50 NTU a essa grandeza. A curva genérica anterior foi removida do fluxo físico.
 
 **Publicar a API e o SCADA atualizados antes de usar este firmware.** A API adiciona `turbidez_unidade` à tabela existente, preservando as linhas. Uma API antiga rejeita o novo payload relativo, em vez de registrá-lo como NTU; a leitura continua na fila. Detalhes, fórmulas, logs e testes estão em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
 
-A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se um sensor ativo tiver leitura inválida, a nova medição completa é recusada; as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
+A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se pH, temperatura ou turbidez tiver leitura inválida, a nova medição completa é recusada; o TDS é opcional e as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 
 ### Logs locais sem USB
 

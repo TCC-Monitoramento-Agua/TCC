@@ -1,6 +1,6 @@
-# Protótipo físico — pH, temperatura e turbidez relativa
+# Protótipo físico — pH, temperatura, turbidez relativa e TDS estimado
 
-Esta versão integra os sensores do código de teste enviado pelo usuário. O TDS foi **temporariamente desativado** a pedido dele; não se conclui por software que o módulo esteja queimado.
+Esta versão integra os sensores do código de teste enviado pelo usuário. O TDS foi reativado no **GPIO35** após confirmação da ligação e observação de variação de tensão na saída do módulo. A suspeita anterior de avaria não foi confirmada. A aquisição reativada ainda precisa ser conferida na placa.
 
 ## Ligações usadas nesta versão
 
@@ -9,9 +9,9 @@ Esta versão integra os sensores do código de teste enviado pelo usuário. O TD
 | PH-4502C | 34 | Saída analógica pelo divisor já utilizado na calibração. |
 | Turbidez | **32** | Pinagem do código físico enviado, diferente do esquemático anterior (35). |
 | DS18B20 | 14 | Alimentação 3,3 V; pull-up de 4,7 kΩ entre DATA e 3,3 V. |
-| TDS | Não adquirido | `tds: null` nas novas medições; não lê nem configura um GPIO para TDS. |
+| TDS | **35** | Saída analógica pelo divisor 10k/15k; ppm estimado, sem calibração com padrão. |
 
-Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. O código enviado pelo colega definia pH e TDS ambos no GPIO 34 e imprimia um número de GPIO diferente do realmente lido; essa duplicidade foi removida desativando o TDS.
+Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. A duplicidade de GPIO34 para pH/TDS existente no teste do colega foi corrigida: pH usa34 e TDS usa35.
 
 ## pH: pontos efetivamente confirmados
 
@@ -42,16 +42,28 @@ queda relativa (%) = máximo(0, mínimo(100, (2709 − ADC) / 2709 × 100))
 
 O JSON usa **`turbidez_relativa`**, em vez de `turbidez`. A API armazena o valor e a unidade `percentual_relativo`; consultas retornam `turbidez` e `turbidez_unidade`. O SCADA apresenta `% relativo`, explica que é queda do sinal e não aplica o alerta de 50 NTU aos percentuais. Leituras NTU das simulações e antigas continuam identificadas como `ntu`.
 
+## TDS: tensão e estimativa com temperatura medida
+
+A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolts`, com 10 ms entre pares. Os logs mostram o GPIO35, ADC, milivolts no GPIO (conversão calibrada pelo suporte ADC do ESP32), tensão estimada na saída do módulo e ppm. As duas chamadas ADC são conversões distintas. Essa escala em milivolts é usada somente para TDS; a calibração existente do pH permanece inalterada.
+
+O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente180 mV no GPIO**, e500–600 mV devem produzir300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
+
+A conversão usa a curva de referência DFRobot/GravityTDS, fator0,5 e compensação `V25 = Vmodulo / (1 + 0,02 × (temperatura − 25))` com temperatura real do DS18B20. O resultado é uma **estimativa não calibrada**, não garantia da concentração real nem de potabilidade. Saída acima2,3 V, estimativa fora0–1000 ppm, temperatura inválida e ADC nos extremos resultam em `tds:null`. Falha somente no TDS não bloqueia os outros parâmetros. A página local apresenta um cartão de **TDS estimado**, com ppm, ADC bruto e milivolts no GPIO35. TDS inválido aparece como indisponível. O cartão é atualizado mesmo quando outro sensor impede criar a medição completa para a API; os detalhes de tensão reconstruída continuam nos logs.
+
+O teste com papel dissolvido indica variação elétrica, mas não calibra TDS: partículas suspensas não equivalem a sólidos dissolvidos. Conferir o sinal primeiro e usar padrão apropriado para calibração futura.
+
+Referência da curva: https://github.com/DFRobot/GravityTDS/blob/master/GravityTDS.cpp . A compatibilidade e precisão no módulo utilizado precisam ser verificadas experimentalmente.
+
 ## Publicação e operação
 
 1. Atualizar/publicar **API e SCADA** antes de usar o novo firmware. A API acrescenta a coluna `turbidez_unidade` sem apagar registros; valores anteriores recebem `ntu`. Se a permissão de alteração do schema não estiver disponível, aplicar a adição pelo procedimento de administração do banco.
 2. Conferir a pinagem, a configuração Wi-Fi e o ID do equipamento (`físico_1`, alterável por build flag). A API aceita letras acentuadas na identificação; o nome é preservado no banco e nos filtros do SCADA.
 3. Compilar e gravar o projeto `firmware/esp32/prototipo` normalmente, **sem erase/uploadfs** para preservar a fila.
-4. Após NTP, conferir `[PH]`, `[TEMPERATURA]`, `[TURBIDEZ]`, `[LEITURA]` e `[BANCO]` na serial.
+4. Após NTP, conferir `[PH]`, `[TEMPERATURA]`, `[TURBIDEZ]`, `[TDS]`, `[LEITURA]` e `[BANCO]` na serial.
 
 Uma API antiga exige `turbidez` e rejeita o novo campo relativo com HTTP 400; assim não grava o percentual como se fosse NTU. O firmware mantém a pendência para nova tentativa e também confere a unidade na confirmação dos registros relativos. Após atualizar a API, pode reenviar os mesmos UUIDs.
 
-A fila de 1.000 registros, as regras de horário e a deduplicação permanecem. Registros antigos na fila não são reescritos nem apagados. A desativação do TDS se aplica às novas aquisições; pendências históricas são preservadas.
+A fila de 1.000 registros, as regras de horário e a deduplicação permanecem. Registros antigos na fila, inclusive TDS nulo, não são reescritos nem apagados. A reativação aplica-se somente às novas aquisições.
 
 Se um dos três sensores ativos produzir leitura inválida, a nova medição completa não é criada, pois a API exige pH, temperatura e turbidez. Os diagnósticos dos três continuam sendo impressos e o processamento das pendências não é interrompido. Isso evita inserir zeros ou valores fixos como se fossem medições reais.
 

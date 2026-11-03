@@ -7,6 +7,7 @@
 // GPIOs do firmware/teste físico enviados pelo usuário (diferem do esquema antigo).
 constexpr uint8_t PH_PIN = 34;
 constexpr uint8_t TURBIDEZ_FISICA_PIN = 32;
+constexpr uint8_t TDS_FISICO_PIN = 35;
 constexpr uint8_t TEMPERATURA_PIN = 14;
 constexpr size_t NUM_AMOSTRAS_FISICAS = 31;
 constexpr unsigned long INTERVALO_AMOSTRAS_FISICAS_MS = 10;
