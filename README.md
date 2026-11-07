@@ -12,7 +12,7 @@ Este guia descreve a implementação atual e os objetivos do documento **“luca
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
 | SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
-| Protótipo físico | pH com dois pontos confirmados, DS18B20 real, turbidez relativa em percentual e TDS estimado no GPIO35. Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
+| Protótipo físico | pH com dois pontos confirmados, DS18B20 real, turbidez em escala demonstrativa (NTU no cartão) e TDS estimado no GPIO35. Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
 ```text
 Sensores / circuito Wokwi → ESP32 → API Flask → MySQL
@@ -347,9 +347,9 @@ O pH utiliza os pontos confirmados de **1,57 V → pH 7** e **1,95 V → pH 4**,
 
 O TDS foi reativado no **GPIO35**: os logs apresentam ADC, milivolts no GPIO e tensão reconstruída pelo divisor10k/15k. Os ppm são estimados pela curva de referência GravityTDS, com temperatura medida pelo DS18B20, sem calibração com padrão. TDS inválido é enviado como `null`, aparecendo como `--`, sem bloquear os outros sensores. A aquisição reativada ainda precisa ser conferida no físico; registros históricos e simulações são preservados.
 
-A turbidez física utiliza a **queda percentual do sinal**, com referência inicial `ADC_AGUA_REFERENCIA = 2709` do teste fornecido; não é NTU nem calibração com padrão conhecido. O JSON usa `turbidez_relativa`, e a API registra sua unidade. O SCADA exibe `% relativo`, sem aplicar o alerta de 50 NTU a essa grandeza. A curva genérica anterior foi removida do fluxo físico.
+A turbidez física utiliza uma **escala de demonstração**, com referência fornecida de 0,921 V e relação arbitrária `max(0, 2,5 + (0,921 − Vgpio) × 50)`. O cartão exibe NTU; a descrição e o histórico identificam a demonstração. Não é conversão calibrada em padrões NTU. A API recebe `turbidez_demonstrativa` e preserva a unidade `ntu_demonstrativo`. O SCADA usa faixa demonstrativa0–5; registros antigos mantêm unidade e limites anteriores.
 
-**Publicar a API e o SCADA atualizados antes de usar este firmware.** A API adiciona `turbidez_unidade` à tabela existente, preservando as linhas. Uma API antiga rejeita o novo payload relativo, em vez de registrá-lo como NTU; a leitura continua na fila. Detalhes, fórmulas, logs e testes estão em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
+**Publicar API e SCADA atualizados antes de gravar o firmware.** Uma API antiga rejeita o campo novo, mantendo a leitura na fila. Não alterar dados históricos para a nova escala. Detalhes e testes em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
 
 A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se pH, temperatura ou turbidez tiver leitura inválida, a nova medição completa é recusada; o TDS é opcional e as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include "LogDiagnostico.h"
+#include "PaginaDiagnosticoGzip.h"
 
 struct EstadoDiagnostico {
   float ph = NAN, temperatura = NAN, turbidez = NAN, tds = NAN;
@@ -75,42 +76,7 @@ class ConsoleDiagnostico : public Print {
   }
 };
 
-static const char PAGINA_DIAGNOSTICO[] PROGMEM = R"html(<!doctype html>
-<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diagnóstico ESP32</title><style>
-*{box-sizing:border-box}body{margin:0;background:#101827;color:#e8eef8;font:16px system-ui,sans-serif}main{max-width:1050px;margin:auto;padding:20px}h1{font-size:24px;margin:0 0 8px}p{color:#b5c6df;line-height:1.5}.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.cartao{background:#1b293f;padding:16px;border-radius:10px}.cartao strong{display:block;font-size:25px;margin:8px 0}.detalhe{color:#bbcae0;font-size:14px;white-space:pre-line}button{background:#23466f;color:white;border:1px solid #5681ab;padding:10px;border-radius:6px;cursor:pointer}nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:16px 0}pre{background:#080f1a;border:1px solid #344963;border-radius:8px;padding:12px;height:50vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 monospace}#conexao{font-weight:bold}.erro{color:#ffacac}.ok{color:#7ce6b3}
-</style><main><h1>Diagnóstico local do ESP32</h1><p id="conexao">Conectando ao dispositivo…</p>
-<div class="grade"><section class="cartao">pH<strong id="ph">--</strong><div class="detalhe" id="phInfo">Aguardando leitura</div></section>
-<section class="cartao">Temperatura<strong id="temperatura">--</strong><div class="detalhe">DS18B20 · GPIO 14</div></section>
-<section class="cartao">Turbidez relativa<strong id="turbidez">--</strong><div class="detalhe" id="turbidezInfo">Queda do sinal; não é NTU.</div></section>
-<section class="cartao">TDS estimado<strong id="tds">--</strong><div class="detalhe" id="tdsInfo">GPIO 35 · Sem calibração com padrão</div></section>
-<section class="cartao">Fila e envio<strong id="fila">--</strong><div class="detalhe" id="envio">Aguardando estado</div></section></div>
-<p id="estado">Aguardando…</p><p>Logs em RAM; perdidos ao reiniciar.</p>
-<nav><button id="pausa">Pausar atualização</button><button id="limpar">Limpar tela</button><button id="baixar">Baixar logs</button><label><input type="checkbox" id="rolar" checked> Rolar automaticamente</label></nav>
-<pre id="logs" aria-label="Logs do dispositivo"></pre></main>
-<script>
-const el=id=>document.getElementById(id);let cursor=0,sessao=null,pausado=false,linhas=[];
-const numero=(v,casas=2)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(casas):'indisponível';
-function renderizar(d){const e=d.estado;if(sessao!==null&&sessao!==d.sessao){linhas=['--- ESP32 reiniciado; nova sessão ---'];cursor=0}sessao=d.sessao;
-el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V`:'Aguardando leitura';
-el('temperatura').textContent=numero(e.temperatura)+' °C';el('turbidez').textContent=numero(e.turbidez_relativa,1)+' %';
-el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nEscala ADC: ${numero(e.turbidez_volts,3)} V\nReferência: ${e.referencia} ADC; não é NTU.`:'Aguardando leitura';
-el('tds').textContent=numero(e.tds,1)+(Number.isFinite(e.tds)?' ppm':'');
-el('tdsInfo').textContent=e.leu?`GPIO 35 · ADC ${e.tds_adc}\nGPIO: ${e.tds_mv} mV\nCompensação térmica; sem calibração.`:'Aguardando leitura';
-el('fila').textContent=`${e.pendentes} / ${e.capacidade}`;
-el('envio').textContent=e.enviando?'Enviando à API…':e.http===0?'Nenhum envio concluído':`Último HTTP: ${e.http}\n${e.confirmou?'Gravação confirmada':'Sem confirmação; leitura mantida'}`;
-const idade=e.leu?Math.floor((d.uptime_ms-e.leitura_ms)>>>0)/1000:null;
-el('estado').textContent=`${d.equipamento} · IP ${d.ip} · Wi-Fi ${d.rssi} dBm · Relógio ${e.horario?'sincronizado':'aguardando NTP'} · Fila ${e.fila_saudavel?'pronta':'indisponível'} · ${idade===null?'Sem leitura':`Última leitura há ${idade.toFixed(0)} s (${e.medicao_valida?'válida':'inválida'})`}`;
-if(d.perdidos)linhas.push('--- Buffer: linhas antigas sobrescritas ---');
-for(const l of d.logs){if(l.id>cursor){linhas.push(`[${(l.ms/1000).toFixed(1)} s] ${l.texto}`);cursor=l.id}}
-if(linhas.length>500)linhas=linhas.slice(-500);el('logs').textContent=linhas.join('\n');if(el('rolar').checked)el('logs').scrollTop=el('logs').scrollHeight;
-el('conexao').textContent='Conectado ao ESP32 · atualização local';el('conexao').className='ok'}
-async function atualizar(){if(!pausado){const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);try{const r=await fetch(`/api/diagnostico?apos=${cursor}&sessao=${sessao===null?'':sessao}`,{cache:'no-store',signal:c.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);renderizar(await r.json())}catch(e){el('conexao').textContent='Sem resposta do ESP32. Confira o Wi-Fi e o endereço; dados abaixo podem estar antigos.';el('conexao').className='erro'}finally{clearTimeout(t)}}setTimeout(atualizar,1000)}
-el('pausa').onclick=()=>{pausado=!pausado;el('pausa').textContent=pausado?'Retomar atualização':'Pausar atualização';if(pausado)el('conexao').textContent='Atualização pausada'};
-el('limpar').onclick=()=>{linhas=[];el('logs').textContent=''};
-el('baixar').onclick=()=>{const u=URL.createObjectURL(new Blob([linhas.join('\n')],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='logs-esp32.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
-atualizar();
-</script></html>)html";
+
 
 class DiagnosticoLocal {
   ConsoleDiagnostico& console;
@@ -136,7 +102,8 @@ class DiagnosticoLocal {
     doc["ip"] = WiFi.localIP().toString(); doc["rssi"] = WiFi.RSSI();
     doc["perdidos"] = cursor && primeiro > cursor + 1;
     JsonObject e = doc.createNestedObject("estado");
-    e["ph"] = estado.ph; e["temperatura"] = estado.temperatura; e["turbidez_relativa"] = estado.turbidez;
+    e["ph"] = estado.ph; e["temperatura"] = estado.temperatura; e["turbidez"] = estado.turbidez;
+    e["turbidez_unidade"] = "ntu_demonstrativo";
     e["tds"] = estado.tds; e["tds_adc"] = estado.tdsAdc; e["tds_mv"] = estado.tdsMv;
     e["ph_adc"] = estado.phAdc; e["turbidez_adc"] = estado.turbidezAdc;
     e["ph_volts"] = estado.phVolts; e["turbidez_volts"] = estado.turbidezVolts; e["referencia"] = estado.referencia;
@@ -178,8 +145,9 @@ class DiagnosticoLocal {
     if (!fim) return;
     *fim = '\0';
     if (!strcmp(url, "/")) {
-      cabecalho(cliente, "text/html; charset=utf-8", sizeof(PAGINA_DIAGNOSTICO) - 1);
-      cliente.write(reinterpret_cast<const uint8_t*>(PAGINA_DIAGNOSTICO), sizeof(PAGINA_DIAGNOSTICO) - 1);
+      cliente.printf("HTTP/1.0 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Encoding: gzip\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: %u\r\n\r\n",
+          static_cast<unsigned>(sizeof(PAGINA_DIAGNOSTICO_GZIP)));
+      cliente.write(PAGINA_DIAGNOSTICO_GZIP, sizeof(PAGINA_DIAGNOSTICO_GZIP));
     } else if (!strcmp(url, "/api/diagnostico") || !strncmp(url, "/api/diagnostico?", 17)) {
       responderEstado(cliente, url);
     } else cliente.print("HTTP/1.0 404 Not Found\r\nConnection: close\r\n\r\n");

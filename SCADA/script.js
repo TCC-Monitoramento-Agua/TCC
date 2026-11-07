@@ -346,8 +346,16 @@ function turbidezEhRelativa(dados) {
     return dados.turbidez_unidade === "percentual_relativo";
 }
 
+function turbidezEhDemonstrativa(dados) {
+    return dados.turbidez_unidade === "ntu_demonstrativo";
+}
+
 function formatarTurbidez(dados) {
     return `${dados.turbidez.toFixed(1)} ${turbidezEhRelativa(dados) ? "% relativo" : "NTU"}`;
+}
+
+function formatarTurbidezHistorico(dados) {
+    return formatarTurbidez(dados) + (turbidezEhDemonstrativa(dados) ? " (demonstração)" : "");
 }
 
 function atualizarCards(dados) {
@@ -373,7 +381,9 @@ function atualizarCards(dados) {
     document.getElementById("unidadeTurbidez").textContent = turbidezEhRelativa(dados) ? "% RELATIVO" : "NTU";
     document.getElementById("faixaTurbidez").textContent = turbidezEhRelativa(dados)
         ? "Queda do sinal em relação à amostra de referência; sem escala NTU."
-        : "Limite configurado: ≤ 50.0 NTU";
+        : turbidezEhDemonstrativa(dados)
+            ? "Escala de demonstração · faixa configurada: 0 a 5 NTU."
+            : "Limite configurado: ≤ 50.0 NTU";
 
     document.getElementById(
         "dataLeitura"
@@ -428,7 +438,9 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (!turbidezEhRelativa(dados) && dados.turbidez > 50) {
+    if (turbidezEhDemonstrativa(dados) && dados.turbidez > 5) {
+        mensagens.push("Turbidez acima da faixa de demonstração (5 NTU).");
+    } else if (!turbidezEhRelativa(dados) && !turbidezEhDemonstrativa(dados) && dados.turbidez > 50) {
         mensagens.push(
             "Turbidez elevada. Água com excesso de partículas."
         );
@@ -513,7 +525,7 @@ function atualizarTabelaHistorico(listaLeituras) {
                 </td>
 
                 <td>
-                    ${formatarTurbidez(item)}
+                    ${formatarTurbidezHistorico(item)}
                 </td>
             `;
 

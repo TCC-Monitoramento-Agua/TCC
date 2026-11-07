@@ -46,6 +46,19 @@ assert(document.getElementById("alertaSistema").textContent.includes("Turbidez")
 contexto.verificarAlarmes({...ntu, turbidez: 50});
 assert(document.getElementById("alertaSistema").classList.contains("oculto"));
 assert.equal(contexto.formatarTurbidez({turbidez: 2.3}), "2.3 NTU"); // API antiga/simulação.
+const demo = {...ntu, turbidez: 2.5, turbidez_unidade: "ntu_demonstrativo"};
+contexto.atualizarCards(demo);
+assert.equal(document.getElementById("valorTurbidez").textContent, "2.5 NTU");
+assert.equal(document.getElementById("unidadeTurbidez").textContent, "NTU");
+assert(document.getElementById("faixaTurbidez").textContent.includes("demonstração"));
+assert.equal(contexto.formatarTurbidezHistorico(demo), "2.5 NTU (demonstração)");
+assert.equal(contexto.formatarTurbidezHistorico(ntu), "51.0 NTU");
+contexto.verificarAlarmes({...demo, turbidez: 5});
+assert(document.getElementById("alertaSistema").classList.contains("oculto"));
+contexto.verificarAlarmes({...demo, turbidez: 5.1});
+assert(document.getElementById("alertaSistema").textContent.includes("demonstração"));
+contexto.atualizarCards(relativa); // Voltar ao histórico não muda sua unidade.
+assert.equal(document.getElementById("valorTurbidez").textContent, "75.0 % relativo");
 contexto.limparLeituras();
 assert.equal(document.getElementById("unidadeTurbidez").textContent, "--");
 console.log("SCADA: unidades, troca de equipamento, TDS ausente e alertas verificados.");

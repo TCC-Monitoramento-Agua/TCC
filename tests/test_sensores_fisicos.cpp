@@ -17,6 +17,14 @@ int main() {
   assert(turbidezRelativa(1000, 2000) == 50.0f);
   assert(turbidezRelativa(0) == 100.0f);
   assert(std::isnan(turbidezRelativa(1000, 0)));
+  // Escala arbitrária de demonstração, não equivalência com padrões NTU.
+  assert(std::abs(turbidezDemonstrativa(0.921f) - 2.5f) < 0.001f);
+  assert(std::abs(turbidezDemonstrativa(0.871f) - 5.0f) < 0.001f);
+  assert(turbidezDemonstrativa(0.971f) < 0.001f);
+  assert(turbidezDemonstrativa(0.8f) > 5.0f);
+  assert(turbidezDemonstrativa(1.1f) == 0.0f);
+  assert(std::isnan(turbidezDemonstrativa(NAN)));
+  assert(std::isnan(turbidezDemonstrativa(-0.1f)));
   assert(temperaturaFisicaValida(22.5f));
   assert(temperaturaFisicaValida(85.0f)); // Pode ser temperatura real após conversão.
   assert(!temperaturaFisicaValida(-127.0f));

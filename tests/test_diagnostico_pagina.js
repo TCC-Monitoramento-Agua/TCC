@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
-const fonte = fs.readFileSync(path.join(__dirname, "../firmware/esp32/include/DiagnosticoLocal.h"), "utf8");
+const fonte = fs.readFileSync(path.join(__dirname, "../firmware/esp32/include/PaginaDiagnostico.html"), "utf8");
 const script = fonte.match(/<script>([\s\S]*?)<\/script>/)[1];
 const elementos = new Map();
 const timers = [];
@@ -15,7 +15,7 @@ const payload = {
     sessao: 10, uptime_ms: 20000, equipamento: "físico_1", ip: "192.168.1.15", rssi: -55,
     perdidos: false,
     estado: {
-        ph: 7, temperatura: 22.5, turbidez_relativa: 2.5, tds: 217.0, tds_adc: 235, tds_mv: 331,
+        ph: 7, temperatura: 22.5, turbidez: 2.5, tds: 217.0, tds_adc: 235, tds_mv: 331,
         ph_adc: 1948, turbidez_adc: 2641, ph_volts: 1.57, turbidez_volts: 2.128,
         referencia: 2709, leu: true, leitura_ms: 10000, medicao_valida: true,
         pendentes: 3, capacidade: 1000, fila_saudavel: true, horario: true,
@@ -31,7 +31,7 @@ const contexto = vm.createContext({document, AbortController,
 vm.runInContext(script.slice(0, script.lastIndexOf("atualizar();")), contexto);
 contexto.renderizar(payload);
 assert.equal(document.getElementById("ph").textContent, "7.00");
-assert.equal(document.getElementById("turbidez").textContent, "2.5 %");
+assert.equal(document.getElementById("turbidez").textContent, "2.5 NTU");
 assert.equal(document.getElementById("tds").textContent, "217.0 ppm");
 assert(document.getElementById("tdsInfo").textContent.includes("331 mV"));
 assert(document.getElementById("tdsInfo").textContent.includes("ADC 235"));
@@ -45,7 +45,7 @@ contexto.renderizar(payload);
 assert.equal(document.getElementById("logs").textContent.split("\n").length, 1); // Sem duplicação.
 
 contexto.renderizar({...payload, sessao: 11, logs: [{id: 1, ms: 100, texto: "novo boot"}],
-    estado: {...payload.estado, ph: null, temperatura: null, turbidez_relativa: null, tds: null, medicao_valida: false}});
+    estado: {...payload.estado, ph: null, temperatura: null, turbidez: null, tds: null, medicao_valida: false}});
 assert.equal(document.getElementById("ph").textContent, "indisponível");
 assert.equal(document.getElementById("tds").textContent, "indisponível");
 assert(document.getElementById("logs").textContent.includes("reiniciado"));

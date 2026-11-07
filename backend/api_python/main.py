@@ -166,9 +166,10 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
         if not dados.get("data_hora"):
             return False, "data_hora é obrigatório quando leitura_id é informado"
 
-    if "turbidez" in dados and "turbidez_relativa" in dados:
-        return False, "Informe turbidez em NTU ou turbidez_relativa, não ambos"
-    campo_turbidez = "turbidez_relativa" if "turbidez_relativa" in dados else "turbidez"
+    campos_turbidez = [c for c in ("turbidez", "turbidez_relativa", "turbidez_demonstrativa") if c in dados]
+    if len(campos_turbidez) > 1:
+        return False, "Informe apenas um campo de turbidez"
+    campo_turbidez = campos_turbidez[0] if campos_turbidez else "turbidez"
     campos_obrigatorios = ["ph", campo_turbidez, "temperatura"]
 
     for campo in campos_obrigatorios:
@@ -180,6 +181,8 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
         turbidez = float(dados[campo_turbidez])
         if campo_turbidez == "turbidez_relativa" and (not math.isfinite(turbidez) or not 0 <= turbidez <= 100):
             return False, "turbidez_relativa deve ser um percentual entre 0 e 100"
+        if campo_turbidez == "turbidez_demonstrativa" and (not math.isfinite(turbidez) or not 0 <= turbidez <= 1000):
+            return False, "turbidez_demonstrativa deve estar entre 0 e 1000"
         float(dados["temperatura"])
 
         if "tds" in dados and dados["tds"] is not None:
@@ -272,9 +275,10 @@ def receber_leitura():
 
     try:
         ph = float(dados["ph"])
-        relativa = "turbidez_relativa" in dados
-        turbidez = float(dados["turbidez_relativa"] if relativa else dados["turbidez"])
-        turbidez_unidade = "percentual_relativo" if relativa else "ntu"
+        campo_turbidez = next(c for c in ("turbidez", "turbidez_relativa", "turbidez_demonstrativa") if c in dados)
+        turbidez = float(dados[campo_turbidez])
+        turbidez_unidade = {"turbidez": "ntu", "turbidez_relativa": "percentual_relativo",
+                            "turbidez_demonstrativa": "ntu_demonstrativo"}[campo_turbidez]
         temperatura = float(dados["temperatura"])
         tds = float(dados["tds"]) if "tds" in dados and dados["tds"] is not None else None
         data_hora = parse_data_hora(dados.get("data_hora"))

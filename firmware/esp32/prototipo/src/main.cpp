@@ -133,17 +133,17 @@ float lerPhCalibrado() {
   return ph;
 }
 
-float lerTurbidezRelativa() {
+float lerTurbidezDemonstrativa() {
   const uint16_t adc = lerMedianaAdc(TURBIDEZ_FISICA_PIN);
   ultimoAdcTurbidez = adc;
-  const float turbidez = turbidezRelativa(adc);
+  const float turbidez = turbidezDemonstrativa(tensaoEscalaCalibracao(adc));
   if (adc == 0 || adc == 4095 || !std::isfinite(turbidez)) {
     Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | sem medição: entrada saturada ou referência inválida\r\n",
         TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc));
     return NAN;
   }
-  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%u | queda do sinal=%.1f %% (não é NTU)\r\n",
-      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), ADC_AGUA_REFERENCIA, turbidez);
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%.3f V | %.1f NTU (demonstração)\r\n",
+      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), TURBIDEZ_REFERENCIA_V, turbidez);
   return turbidez;
 }
 
@@ -209,11 +209,13 @@ int enviarPostComRetry(const String& payload) {
 #endif
   http.end(); client.stop();
   StaticJsonDocument<512> ack;
+  const char* unidadeEsperada = !original["turbidez_demonstrativa"].isNull() ? "ntu_demonstrativo" :
+      !original["turbidez_relativa"].isNull() ? "percentual_relativo" : "ntu";
   bool confirmou = (codigo == 200 || codigo == 201) && !deserializeJson(ack, resposta) &&
       ack["status"].as<String>() == "ok" &&
       ack["leitura_id"].as<String>() == leituraId &&
       ack["equipamento_id"].as<String>() == equipamentoId &&
-      (original["turbidez_relativa"].isNull() || ack["turbidez_unidade"].as<String>() == "percentual_relativo") &&
+      ack["turbidez_unidade"].as<String>() == unidadeEsperada &&
       ack["id"].is<uint64_t>() && ack["id"].as<uint64_t>() > 0;
   if (confirmou) {
     consoleDiagnostico.envio(false, codigo, true);
@@ -235,10 +237,11 @@ void sendReading() {
   const String horarioColeta = getTimestamp();
   const float ph = lerPhCalibrado();
   const float temperatura = lerTemperatura();
-  const float turbidez = lerTurbidezRelativa();
+  const float turbidez = lerTurbidezDemonstrativa();
   const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
-      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA,
+      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez),
+      static_cast<uint16_t>(TURBIDEZ_REFERENCIA_V * 4095.0f / 3.3f + 0.5f),
       tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");
@@ -250,8 +253,8 @@ void sendReading() {
   doc["equipamento_id"] = String(EQUIPAMENTO_ID).length() > 0
       ? String(EQUIPAMENTO_ID) : WiFi.macAddress();
   doc["ph"] = ph;
-  // Campo distinto impede que uma API antiga grave o percentual como NTU.
-  doc["turbidez_relativa"] = turbidez;
+  // Campo distinto impede que uma API antiga grave a convenção como medição NTU.
+  doc["turbidez_demonstrativa"] = turbidez;
   doc["temperatura"] = temperatura;
   if (std::isfinite(tds)) doc["tds"] = tds;
   else doc["tds"] = nullptr; // Falha no TDS não vira zero nem bloqueia os demais.
@@ -276,7 +279,7 @@ void setup() {
   sensorTemperatura.begin();
   sensorTemperatura.setResolution(12);
   sensorTemperatura.setWaitForConversion(true);
-  Serial.println("[SENSORES] pH=GPIO34 | turbidez relativa=GPIO32 | DS18B20=GPIO14 | TDS=GPIO35 (estimativa)");
+  Serial.println("[SENSORES] pH=34 | turbidez=32 (demo) | DS18B20=14 | TDS=35");
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();
