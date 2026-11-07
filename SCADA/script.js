@@ -458,12 +458,8 @@ function inicializarControlesFiltro() {
 ATUALIZA OS CARDS
 ====================================================
 */
-function turbidezEhRelativa(dados) {
-    return dados.turbidez_unidade === "percentual_relativo";
-}
-
 function formatarTurbidez(dados) {
-    return `${dados.turbidez.toFixed(1)} ${turbidezEhRelativa(dados) ? "% relativo" : "NTU"}`;
+    return `${dados.turbidez.toFixed(1)} NTU`;
 }
 
 function atualizarCards(dados) {
@@ -486,10 +482,6 @@ function atualizarCards(dados) {
         "valorTurbidez"
     ).textContent =
         formatarTurbidez(dados);
-    document.getElementById("unidadeTurbidez").textContent = turbidezEhRelativa(dados) ? "% RELATIVO" : "NTU";
-    document.getElementById("faixaTurbidez").textContent = turbidezEhRelativa(dados)
-        ? "Queda do sinal em relação à amostra de referência; sem escala NTU."
-        : "Limite configurado: ≤ 50.0 NTU";
 
     document.getElementById(
         "dataLeitura"
@@ -544,7 +536,7 @@ function verificarAlarmes(dados) {
         );
     }
 
-    if (!turbidezEhRelativa(dados) && dados.turbidez > 50) {
+    if (dados.turbidez > 50) {
         mensagens.push(
             "Turbidez elevada. Água com excesso de partículas."
         );
@@ -577,8 +569,6 @@ function limparLeituras() {
     const alerta = document.getElementById("alertaSistema");
     alerta.textContent = "";
     alerta.classList.add("oculto");
-    document.getElementById("unidadeTurbidez").textContent = "--";
-    document.getElementById("faixaTurbidez").textContent = "Aguardando leitura.";
 }
 
 
