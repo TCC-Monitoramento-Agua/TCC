@@ -59,6 +59,8 @@ A conversão usa a curva de referência DFRobot/GravityTDS, fator0,5 e compensa�
 
 Quando o ADC bruto é0 ou4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra“fora da faixa”no lugar dos mV nessas condições: valores calculados como142mV comADCzero podem ser o piso da conversão, não tensão efetivamente confirmada. Não foi introduzido piso positivo nem valor fixo para forçar resposta na água. O ajuste anterior de0/6dB foi revertido; TDS permanece em11dB e o divisor continua instalado. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
 
+Por solicitação do usuário, depois de uma aquisição com **ADC zero e TDS indisponível**, o cartão de diagnóstico exibe **`< 50 ppm`**. Essa é uma **convenção visual configurada**, não um limite de detecção experimentalmente determinado; a descrição mantém a indicação de sinal ausente/baixo e concentração não confirmada. O log registra a mesma convenção. O valor numérico continua `null` na API/banco, sem fabricar zero,50 ou outro número. Saturação, falha de temperatura e inicialização sem aquisição permanecem indisponíveis, sem esse rótulo. O SCADA remoto não foi alterado nesta rodada; seus registros continuam usando o valor numérico recebido.
+
 O teste com papel dissolvido indica variação elétrica, mas não calibra TDS: partículas suspensas não equivalem a sólidos dissolvidos. Conferir o sinal primeiro e usar padrão apropriado para calibração futura.
 
 Referência da curva: https://github.com/DFRobot/GravityTDS/blob/master/GravityTDS.cpp . A compatibilidade e precisão no módulo utilizado precisam ser verificadas experimentalmente.

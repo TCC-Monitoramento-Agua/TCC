@@ -18,8 +18,9 @@ function renderizar(d){const e=d.estado;if(sessao!==null&&sessao!==d.sessao){lin
 el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V\nAjuste final: −3,0`:'Aguardando leitura';
 el('temperatura').textContent=numero(e.temperatura)+' °C';el('turbidez').textContent=numero(e.turbidez,1)+' NTU';
 el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nEscala ADC: ${numero(e.turbidez_volts,3)} V\nReferência: 0,921 V; escala de demonstração (0–5 NTU).`:'Aguardando leitura';
-el('tds').textContent=numero(e.tds,1)+(Number.isFinite(e.tds)?' ppm':'');
-el('tdsInfo').textContent=e.leu?`GPIO 35 · ADC ${e.tds_adc}\nGPIO: ${e.tds_adc===0||e.tds_adc===4095?'fora da faixa':e.tds_mv+' mV'}\nCompensação térmica; sem calibração.`:'Aguardando leitura';
+const rotuloTdsBaixo=e.leu&&e.tds_adc===0&&!Number.isFinite(e.tds);
+el('tds').textContent=rotuloTdsBaixo?'< 50 ppm':numero(e.tds,1)+(Number.isFinite(e.tds)?' ppm':'');
+el('tdsInfo').textContent=e.leu?`GPIO 35 · ADC ${e.tds_adc}\nGPIO: ${e.tds_adc===0||e.tds_adc===4095?'fora da faixa':e.tds_mv+' mV'}\n${rotuloTdsBaixo?'Faixa visual configurada; sinal ausente/baixo, concentração não confirmada.':'Compensação térmica; sem calibração.'}`:'Aguardando leitura';
 el('fila').textContent=`${e.pendentes} / ${e.capacidade}`;
 el('envio').textContent=e.enviando?'Enviando à API…':e.http===0?'Nenhum envio concluído':`Último HTTP: ${e.http}\n${e.confirmou?'Gravação confirmada':'Sem confirmação; leitura mantida'}`;
 const idade=e.leu?Math.floor((d.uptime_ms-e.leitura_ms)>>>0)/1000:null;

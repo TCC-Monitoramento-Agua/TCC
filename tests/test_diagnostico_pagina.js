@@ -51,8 +51,19 @@ assert.equal(document.getElementById("ph").textContent, "indisponível");
 assert.equal(document.getElementById("tds").textContent, "indisponível");
 contexto.renderizar({...payload, sessao: 11, logs: [],
     estado: {...payload.estado, tds: null, tds_adc: 0, tds_mv: 142}});
+assert.equal(document.getElementById("tds").textContent, "< 50 ppm");
+assert(document.getElementById("tdsInfo").textContent.includes("Faixa visual configurada"));
 assert(document.getElementById("tdsInfo").textContent.includes("fora da faixa"));
 assert(!document.getElementById("tdsInfo").textContent.includes("142 mV"));
+contexto.renderizar({...payload, sessao: 11, logs: [],
+    estado: {...payload.estado, tds: null, tds_adc: 4095}});
+assert.equal(document.getElementById("tds").textContent, "indisponível");
+contexto.renderizar({...payload, sessao: 11, logs: [],
+    estado: {...payload.estado, leu: false, tds: null, tds_adc: 0}});
+assert.equal(document.getElementById("tds").textContent, "indisponível");
+contexto.renderizar({...payload, sessao: 11, logs: [],
+    estado: {...payload.estado, tds: 0.0, tds_adc: 0}});
+assert.equal(document.getElementById("tds").textContent, "0.0 ppm"); // Rótulo não substitui número recebido.
 assert(document.getElementById("logs").textContent.includes("reiniciado"));
 assert(!document.getElementById("logs").textContent.includes("requisição inválida"));
 contexto.renderizar({...payload, sessao: 11, logs: Array.from({length: 550}, (_, i) => ({id: i + 2, ms: i, texto: `linha ${i}`}))});

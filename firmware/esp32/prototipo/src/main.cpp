@@ -175,8 +175,9 @@ float lerTds(float temperatura) {
   ultimoAdcTds = adc;
   ultimosMvTds = mv;
   if (adc == 0 || adc == 4095) {
-    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; tds=null\r\n",
-        TDS_FISICO_PIN, adc, adc == 0 ? "sinal ausente ou abaixo da faixa do ADC" : "entrada saturada");
+    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; tds=null | exibição=%s\r\n",
+        TDS_FISICO_PIN, adc, adc == 0 ? "sinal ausente ou abaixo da faixa do ADC" : "entrada saturada",
+        adc == 0 ? "< 50 ppm (faixa visual)" : "indisponível");
     return NAN;
   }
   const float voltsModulo = tensaoModuloTds(mv);
