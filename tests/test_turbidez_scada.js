@@ -31,6 +31,13 @@ const relativa = {
 };
 contexto.atualizarCards(relativa);
 assert.equal(document.getElementById("valorTds").textContent, "--");
+contexto.atualizarCards({...relativa, tds: 50, tds_status: "abaixo_50_visual"});
+assert.equal(document.getElementById("valorTds").textContent, "< 50 ppm");
+assert(document.getElementById("valorTds").title.includes("Faixa visual"));
+contexto.verificarAlarmes({...relativa, tds: 50, tds_status: "abaixo_50_visual"});
+assert(document.getElementById("alertaSistema").classList.contains("oculto"));
+assert.equal(contexto.formatarTds({...relativa, tds_status: "indisponivel"}), "--");
+assert.equal(contexto.formatarTds({...relativa, tds: 123, tds_status: "medido"}), "123 ppm");
 assert.equal(document.getElementById("valorTurbidez").textContent, "75.0 % relativo");
 assert.equal(document.getElementById("unidadeTurbidez").textContent, "% RELATIVO");
 contexto.verificarAlarmes(relativa);
@@ -61,4 +68,5 @@ contexto.atualizarCards(relativa); // Voltar ao histórico não muda sua unidade
 assert.equal(document.getElementById("valorTurbidez").textContent, "75.0 % relativo");
 contexto.limparLeituras();
 assert.equal(document.getElementById("unidadeTurbidez").textContent, "--");
+assert.equal(document.getElementById("valorTds").title, "");
 console.log("SCADA: unidades, troca de equipamento, TDS ausente e alertas verificados.");

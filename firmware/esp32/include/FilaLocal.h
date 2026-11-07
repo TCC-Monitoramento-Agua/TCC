@@ -73,7 +73,8 @@ bool guardarMedicaoLocal(JsonDocument& doc) {
     Serial.printf("[LEITURA] %s | pH=%.2f | temperatura=%.1f C | turbidez=%.1f %s | TDS=",
         doc["data_hora"] | "sem horário", doc["ph"].as<double>(), doc["temperatura"].as<double>(),
         turbidez, demonstrativa ? "NTU (demo)" : relativa ? "% relativo" : "NTU");
-    if (doc["tds"].isNull()) Serial.println("indisponível");
+    if (String(doc["tds_status"] | "") == "abaixo_50_visual") Serial.println("< 50 ppm (faixa visual)");
+    else if (doc["tds"].isNull()) Serial.println("indisponível");
     else Serial.printf("%.0f ppm\r\n", doc["tds"].as<double>());
     Serial.printf("[LOCAL] SALVA NO ESP32 | UUID=%s | pendentes=%u/%u\r\n",
         doc["leitura_id"] | "", unsigned(filaLocal.pendentes()), unsigned(CAPACIDADE_FILA));

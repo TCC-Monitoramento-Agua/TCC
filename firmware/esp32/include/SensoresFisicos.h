@@ -27,7 +27,7 @@ constexpr uint16_t ADC_AGUA_REFERENCIA = 2709;
 
 // Convenção de DEMONSTRAÇÃO, não calibração óptica em padrões NTU.
 // Referência fornecida pelo usuário na escala ADC*3,3/4095 do firmware.
-constexpr float TURBIDEZ_REFERENCIA_V = 0.921f;
+constexpr float TURBIDEZ_REFERENCIA_V = 1.591f;
 constexpr float TURBIDEZ_REFERENCIA_DEMO = 2.5f;
 constexpr float TURBIDEZ_GANHO_DEMO = 50.0f; // Unidades demonstrativas por volt.
 
@@ -36,7 +36,7 @@ inline float turbidezDemonstrativa(float volts) {
     return std::numeric_limits<float>::quiet_NaN();
   }
   const float valor = TURBIDEZ_REFERENCIA_DEMO +
-      (TURBIDEZ_REFERENCIA_V - volts) * TURBIDEZ_GANHO_DEMO;
+      (volts - TURBIDEZ_REFERENCIA_V) * TURBIDEZ_GANHO_DEMO;
   return valor < 0.0f ? 0.0f : valor;
 }
 

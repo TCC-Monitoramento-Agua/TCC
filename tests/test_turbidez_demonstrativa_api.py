@@ -55,7 +55,7 @@ class TurbidezDemonstrativaApiTests(unittest.TestCase):
     def preparar_duplicidade(self, unidade):
         self.cursor.execute.side_effect = [mysql.connector.IntegrityError("duplicate", errno=1062), None]
         self.cursor.fetchone.return_value = (7, 7.2, 2.5, 22.5, 130.0,
-                                            datetime(2026, 11, 7, 12), unidade)
+                                            datetime(2026, 11, 7, 12), unidade, "medido")
 
     def test_reenvio_identico_confirma_sem_inserir_novo_registro(self):
         self.preparar_duplicidade("ntu_demonstrativo")

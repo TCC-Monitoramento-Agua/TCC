@@ -60,6 +60,7 @@ async function buscarDadosDaApi() {
             ph: Number(leituraAPI.ph),
             temperatura: Number(leituraAPI.temperatura),
             tds: leituraAPI.tds == null ? null : Number(leituraAPI.tds),
+            tds_status: leituraAPI.tds_status || (leituraAPI.tds == null ? "indisponivel" : "medido"),
             turbidez: Number(leituraAPI.turbidez),
             turbidez_unidade: leituraAPI.turbidez_unidade || "ntu",
             created_at: leituraAPI.data_hora
@@ -358,6 +359,12 @@ function formatarTurbidezHistorico(dados) {
     return formatarTurbidez(dados) + (turbidezEhDemonstrativa(dados) ? " (demonstração)" : "");
 }
 
+function formatarTds(dados) {
+    if (dados.tds_status === "abaixo_50_visual" && dados.tds === 50) return "< 50 ppm";
+    if (dados.tds != null) return `${dados.tds.toFixed(0)} ppm`;
+    return "--";
+}
+
 function atualizarCards(dados) {
     document.getElementById(
         "valorPh"
@@ -372,7 +379,10 @@ function atualizarCards(dados) {
     document.getElementById(
         "valorTds"
     ).textContent =
-        dados.tds == null ? "--" : `${dados.tds.toFixed(0)} ppm`;
+        formatarTds(dados);
+    document.getElementById("valorTds").title = dados.tds_status === "abaixo_50_visual"
+        ? "Faixa visual configurada para sinal baixo ou ausente; concentração não confirmada."
+        : "";
 
     document.getElementById(
         "valorTurbidez"
@@ -470,6 +480,7 @@ function limparLeituras() {
                       "valorTurbidez", "dataLeitura"]) {
         document.getElementById(id).textContent = "--";
     }
+    document.getElementById("valorTds").title = "";
     const alerta = document.getElementById("alertaSistema");
     alerta.textContent = "";
     alerta.classList.add("oculto");
@@ -521,7 +532,7 @@ function atualizarTabelaHistorico(listaLeituras) {
                 </td>
 
                 <td>
-                    ${item.tds == null ? "--" : `${item.tds.toFixed(0)} ppm`}
+                    ${formatarTds(item).replace("<", "&lt;")}
                 </td>
 
                 <td>

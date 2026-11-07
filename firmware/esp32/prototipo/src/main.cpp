@@ -175,8 +175,9 @@ float lerTds(float temperatura) {
   ultimoAdcTds = adc;
   ultimosMvTds = mv;
   if (adc == 0 || adc == 4095) {
-    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; tds=null | exibição=%s\r\n",
+    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; banco=%s | exibição=%s\r\n",
         TDS_FISICO_PIN, adc, adc == 0 ? "sinal ausente ou abaixo da faixa do ADC" : "entrada saturada",
+        adc == 0 ? "50 (referência visual)" : "null",
         adc == 0 ? "< 50 ppm (faixa visual)" : "indisponível");
     return NAN;
   }
@@ -223,6 +224,7 @@ int enviarPostComRetry(const String& payload) {
       ack["leitura_id"].as<String>() == leituraId &&
       ack["equipamento_id"].as<String>() == equipamentoId &&
       ack["turbidez_unidade"].as<String>() == unidadeEsperada &&
+      (original["tds_status"].isNull() || ack["tds_status"].as<String>() == original["tds_status"].as<String>()) &&
       ack["id"].is<uint64_t>() && ack["id"].as<uint64_t>() > 0;
   if (confirmou) {
     consoleDiagnostico.envio(false, codigo, true);
@@ -264,7 +266,10 @@ void sendReading() {
   doc["turbidez_demonstrativa"] = turbidez;
   doc["temperatura"] = temperatura;
   if (std::isfinite(tds)) doc["tds"] = tds;
-  else doc["tds"] = nullptr; // Falha no TDS não vira zero nem bloqueia os demais.
+  else if (ultimoAdcTds == 0) doc["tds"] = 50.0f; // Referência visual; status distingue de medição.
+  else doc["tds"] = nullptr;
+  doc["tds_status"] = std::isfinite(tds) ? "medido" :
+      ultimoAdcTds == 0 ? "abaixo_50_visual" : "indisponivel";
   doc["data_hora"] = horarioColeta;
 
   guardarMedicaoLocal(doc);

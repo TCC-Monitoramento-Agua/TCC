@@ -98,10 +98,18 @@ def init_db() -> None:
                 turbidez_unidade VARCHAR(24) NOT NULL DEFAULT 'ntu',
                 temperatura FLOAT NOT NULL,
                 tds FLOAT NULL,
+                tds_status VARCHAR(24) NULL,
                 data_hora DATETIME NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        cursor.execute("SHOW COLUMNS FROM leituras LIKE 'tds_status'")
+        if cursor.fetchone() is None:
+            try:
+                cursor.execute("ALTER TABLE leituras ADD COLUMN tds_status VARCHAR(24) NULL AFTER tds")
+            except mysql.connector.Error as error:
+                if error.errno != 1060:
+                    raise
         cursor.execute("SHOW COLUMNS FROM leituras LIKE 'turbidez_unidade'")
         if cursor.fetchone() is None:
             try:
@@ -185,8 +193,14 @@ def validar_dados(dados: dict[str, Any]) -> tuple[bool, str]:
             return False, "turbidez_demonstrativa deve estar entre 0 e 1000"
         float(dados["temperatura"])
 
-        if "tds" in dados and dados["tds"] is not None:
-            float(dados["tds"])
+        tds = float(dados["tds"]) if dados.get("tds") is not None else None
+        tds_status = dados.get("tds_status", "medido" if tds is not None else "indisponivel")
+        if tds_status not in ("medido", "abaixo_50_visual", "indisponivel"):
+            return False, "tds_status inválido"
+        if (tds_status == "indisponivel") != (tds is None):
+            return False, "tds e tds_status são inconsistentes"
+        if tds_status == "abaixo_50_visual" and tds != 50.0:
+            return False, "A faixa visual abaixo de 50 usa tds=50 como referência, não como medição"
 
         data_hora = dados.get("data_hora")
         if data_hora is not None and data_hora != "":
@@ -281,6 +295,7 @@ def receber_leitura():
                             "turbidez_demonstrativa": "ntu_demonstrativo"}[campo_turbidez]
         temperatura = float(dados["temperatura"])
         tds = float(dados["tds"]) if "tds" in dados and dados["tds"] is not None else None
+        tds_status = dados.get("tds_status", "medido" if tds is not None else "indisponivel")
         data_hora = parse_data_hora(dados.get("data_hora"))
         medicao_id = str(UUID(dados["leitura_id"])) if "leitura_id" in dados else None
         if not all(math.isfinite(value) for value in (ph, turbidez, temperatura) + (() if tds is None else (tds,))):
@@ -303,10 +318,10 @@ def receber_leitura():
                 cursor.execute(
                     """
                     INSERT INTO leituras
-                    (equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora),
+                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status),
                 )
                 conn.commit()
                 registro_id = cursor.lastrowid
@@ -315,7 +330,7 @@ def receber_leitura():
                 if error.errno != 1062 or medicao_id is None:
                     raise
                 cursor.execute(
-                    "SELECT id, ph, turbidez, temperatura, tds, data_hora, turbidez_unidade FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
+                    "SELECT id, ph, turbidez, temperatura, tds, data_hora, turbidez_unidade, COALESCE(tds_status, IF(tds IS NULL, 'indisponivel', 'medido')) FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
                     (dados["equipamento_id"], medicao_id),
                 )
                 existente = cursor.fetchone()
@@ -326,7 +341,7 @@ def receber_leitura():
                     (old is not None and new is not None and math.isclose(float(old), new, rel_tol=1e-6, abs_tol=1e-6))
                     for old, new in zip(existente[1:5], (ph, turbidez, temperatura, tds))
                 )
-                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora or existente[6] != turbidez_unidade:
+                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora or existente[6] != turbidez_unidade or existente[7] != tds_status:
                     cursor.close()
                     return jsonify({"status": "erro", "message": "leitura_id já utilizado com outros dados"}), 409
                 registro_id = existente[0]
@@ -342,6 +357,7 @@ def receber_leitura():
                 "leitura_id": medicao_id,
                 "duplicada": duplicada,
                 "turbidez_unidade": turbidez_unidade,
+                "tds_status": tds_status,
             }
         ), 200 if duplicada else 201
 
@@ -375,7 +391,7 @@ def listar_leituras():
         with closing(get_connection()) as conn:
             cursor = conn.cursor(dictionary=True)
 
-            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora FROM leituras"
+            query = "SELECT id, equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, COALESCE(tds_status, IF(tds IS NULL, 'indisponivel', 'medido')) AS tds_status FROM leituras"
             params = []
             if equipamento_id is not None:
                 query += " WHERE equipamento_id = %s"

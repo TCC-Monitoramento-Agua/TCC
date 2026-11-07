@@ -101,6 +101,41 @@ class TdsIntegrationTests(unittest.TestCase):
         self.assertEqual(self.post(dict(self.payload, turbidez=12.5, tds=None)).status_code, 409)
         self.assertEqual(len(self.readings()), 1)
 
+    def test_tds_visual_limit_is_stored_and_deduplicated_separately(self):
+        payload = dict(self.payload, tds=50.0, tds_status="abaixo_50_visual")
+        result = self.post(payload)
+        self.assertEqual(result.status_code, 201)
+        self.assertEqual(result.get_json()["tds_status"], "abaixo_50_visual")
+        row = self.readings()[0]
+        self.assertEqual(row["tds"], 50.0)
+        self.assertEqual(row["tds_status"], "abaixo_50_visual")
+        self.assertEqual(self.post(payload).status_code, 200)
+        self.assertEqual(self.post(dict(payload, tds_status="medido")).status_code, 409)
+        # Uma nova leitura válida volta ao cálculo e ao status medido.
+        measured = dict(self.payload, leitura_id=str(uuid4()), tds=123.0, tds_status="medido")
+        self.assertEqual(self.post(measured).status_code, 201)
+        self.assertEqual(self.readings()[0]["tds"], 123.0)
+        self.assertEqual(self.readings()[0]["tds_status"], "medido")
+
+    def test_tds_status_rejects_inconsistent_values(self):
+        for value, status in ((None, "abaixo_50_visual"), (49.0, "abaixo_50_visual"),
+                              (None, "medido"), (50.0, "indisponivel"), (50.0, "invalido")):
+            self.assertEqual(self.post(dict(self.payload, tds=value, tds_status=status)).status_code, 400)
+        self.assertEqual(self.readings(), [])
+
+    def test_status_migration_preserves_legacy_null_and_measured_rows(self):
+        self.assertEqual(self.post(self.payload).status_code, 201)
+        self.assertEqual(self.post(dict(self.payload, leitura_id=str(uuid4()), tds=None)).status_code, 201)
+        self.sql("ALTER TABLE leituras DROP COLUMN tds_status")
+        self.api.init_db()
+        self.api.init_db()
+        rows = self.readings()
+        self.assertIsNone(rows[0]["tds"])
+        self.assertEqual(rows[0]["tds_status"], "indisponivel")
+        self.assertEqual(rows[1]["tds"], 450.0)
+        self.assertEqual(rows[1]["tds_status"], "medido")
+        self.assertEqual(self.post(self.payload).status_code, 200)
+
     def test_relative_turbidity_validation(self):
         self.assertEqual(self.post(dict(self.payload, turbidez_relativa=10)).status_code, 400)
         for value in (-1, 101, "NaN", "Infinity", None):
