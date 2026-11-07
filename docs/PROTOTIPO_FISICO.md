@@ -19,8 +19,11 @@ O usuário confirmou as tensões **1,57 V para pH 7** e **1,95 V para pH 4**. S�
 
 ```text
 V = ADC × 3,3 / 4095
-pH = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
+pH_original = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
+pH_final = pH_original − 3
 ```
+
+O deslocamento final de **−3,0** foi solicitado pelo usuário após esses pontos de calibração. Fica em `AJUSTE_FINAL_PH`, em `SensoresFisicos.h`, e é aplicado antes dos cartões, do armazenamento e do envio:9,8→6,8. O log preserva o valor original, o ajuste e o resultado. Não é uma nova calibração experimental nem uma solução para interferência elétrica. Também desloca os pontos originais (pH7→4, pH4→1), exigindo conferência com referências antes de declarar exatidão. Resultado ajustado fora0–14 ou não finito permanece inválido, sem limitar artificialmente a0. O histórico não é recalculado.
 
 O arquivo de teste usava 4,01 na fórmula, enquanto o relato do usuário identificou a solução como pH 4; esta versão usa **4,00**. Se o valor atribuído à solução for de fato 4,01, ajustar `REFERENCIA_PH4` em `firmware/esp32/include/SensoresFisicos.h`. Os coeficientes se referem à mesma atenuação, divisor, ADC e ajuste físico do módulo; não transportá-los para outra escala de leitura sem nova conferência.
 
@@ -53,6 +56,8 @@ A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolt
 O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente180 mV no GPIO**, e500–600 mV devem produzir300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
 
 A conversão usa a curva de referência DFRobot/GravityTDS, fator0,5 e compensação `V25 = Vmodulo / (1 + 0,02 × (temperatura − 25))` com temperatura real do DS18B20. O resultado é uma **estimativa não calibrada**, não garantia da concentração real nem de potabilidade. Saída acima2,3 V, estimativa fora0–1000 ppm, temperatura inválida e ADC nos extremos resultam em `tds:null`. Falha somente no TDS não bloqueia os outros parâmetros. A página local apresenta um cartão de **TDS estimado**, com ppm, ADC bruto e milivolts no GPIO35. TDS inválido aparece como indisponível. O cartão é atualizado mesmo quando outro sensor impede criar a medição completa para a API; os detalhes de tensão reconstruída continuam nos logs.
+
+Quando o ADC bruto é0 ou4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra“fora da faixa”no lugar dos mV nessas condições: valores calculados como142mV comADCzero podem ser o piso da conversão, não tensão efetivamente confirmada. Não foi introduzido piso positivo nem valor fixo para forçar resposta na água. O ajuste anterior de0/6dB foi revertido; TDS permanece em11dB e o divisor continua instalado. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
 
 O teste com papel dissolvido indica variação elétrica, mas não calibra TDS: partículas suspensas não equivalem a sólidos dissolvidos. Conferir o sinal primeiro e usar padrão apropriado para calibração futura.
 

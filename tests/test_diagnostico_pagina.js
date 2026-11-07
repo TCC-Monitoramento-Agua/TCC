@@ -31,6 +31,7 @@ const contexto = vm.createContext({document, AbortController,
 vm.runInContext(script.slice(0, script.lastIndexOf("atualizar();")), contexto);
 contexto.renderizar(payload);
 assert.equal(document.getElementById("ph").textContent, "7.00");
+assert(document.getElementById("phInfo").textContent.includes("−3,0"));
 assert.equal(document.getElementById("turbidez").textContent, "2.5 NTU");
 assert.equal(document.getElementById("tds").textContent, "217.0 ppm");
 assert(document.getElementById("tdsInfo").textContent.includes("331 mV"));
@@ -48,6 +49,10 @@ contexto.renderizar({...payload, sessao: 11, logs: [{id: 1, ms: 100, texto: "nov
     estado: {...payload.estado, ph: null, temperatura: null, turbidez: null, tds: null, medicao_valida: false}});
 assert.equal(document.getElementById("ph").textContent, "indisponível");
 assert.equal(document.getElementById("tds").textContent, "indisponível");
+contexto.renderizar({...payload, sessao: 11, logs: [],
+    estado: {...payload.estado, tds: null, tds_adc: 0, tds_mv: 142}});
+assert(document.getElementById("tdsInfo").textContent.includes("fora da faixa"));
+assert(!document.getElementById("tdsInfo").textContent.includes("142 mV"));
 assert(document.getElementById("logs").textContent.includes("reiniciado"));
 assert(!document.getElementById("logs").textContent.includes("requisição inválida"));
 contexto.renderizar({...payload, sessao: 11, logs: Array.from({length: 550}, (_, i) => ({id: i + 2, ms: i, texto: `linha ${i}`}))});

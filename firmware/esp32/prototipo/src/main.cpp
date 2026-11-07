@@ -123,9 +123,10 @@ float lerPhCalibrado() {
   const uint16_t adc = lerMedianaAdc(PH_PIN);
   ultimoAdcPh = adc;
   const float tensao = tensaoEscalaCalibracao(adc);
-  const float ph = converterPh(tensao);
-  Serial.printf("[PH] GPIO=%u | ADC=%u | tensão na escala da calibração=%.3f V | pH=%.2f\r\n",
-      PH_PIN, adc, tensao, ph);
+  const float phOriginal = converterPh(tensao);
+  const float ph = ajustarPhFinal(phOriginal);
+  Serial.printf("[PH] GPIO=%u | ADC=%u | Vcal=%.3f V | original=%.2f | ajuste=%.1f | pH=%.2f\r\n",
+      PH_PIN, adc, tensao, phOriginal, AJUSTE_FINAL_PH, ph);
   if (!std::isfinite(ph) || ph < 0.0f || ph > 14.0f || adc == 0 || adc == 4095) {
     Serial.println("[PH] ERRO: leitura fora da faixa; confira sonda, ligação e calibração");
     return NAN;
@@ -173,11 +174,16 @@ float lerTds(float temperatura) {
   const uint32_t mv = amostrasMv[NUM_AMOSTRAS_FISICAS / 2];
   ultimoAdcTds = adc;
   ultimosMvTds = mv;
+  if (adc == 0 || adc == 4095) {
+    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; tds=null\r\n",
+        TDS_FISICO_PIN, adc, adc == 0 ? "sinal ausente ou abaixo da faixa do ADC" : "entrada saturada");
+    return NAN;
+  }
   const float voltsModulo = tensaoModuloTds(mv);
   const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
   Serial.printf("[TDS] GPIO=%u | ADC=%u | GPIO=%lu mV | módulo estimado=%.3f V (divisor 10k/15k) | temperatura=%.2f C\r\n",
       TDS_FISICO_PIN, adc, static_cast<unsigned long>(mv), voltsModulo, temperatura);
-  if (adc == 0 || adc == 4095 || mv == 0 || !std::isfinite(ppm)) {
+  if (mv == 0 || !std::isfinite(ppm)) {
     Serial.println("[TDS] Indisponível: confira sinal, divisor e temperatura; enviado null, sem bloquear os demais sensores");
     return NAN;
   }

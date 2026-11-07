@@ -19,6 +19,9 @@ constexpr float TENSAO_PH4 = 1.95f;
 constexpr float REFERENCIA_PH7 = 7.0f;
 constexpr float REFERENCIA_PH4 = 4.0f;
 
+// Deslocamento final solicitado pelo usuário. Não é nova calibração com padrões.
+constexpr float AJUSTE_FINAL_PH = -3.0f;
+
 // Referência do código de teste. Reavaliar se mudar água, posição ou circuito.
 constexpr uint16_t ADC_AGUA_REFERENCIA = 2709;
 
@@ -48,6 +51,12 @@ inline float converterPh(float tensao) {
   const float ph = REFERENCIA_PH7 + (tensao - TENSAO_PH7) *
       (REFERENCIA_PH4 - REFERENCIA_PH7) / (TENSAO_PH4 - TENSAO_PH7);
   return ph >= 0.0f && ph <= 14.0f ? ph : std::numeric_limits<float>::quiet_NaN();
+}
+
+inline float ajustarPhFinal(float phOriginal) {
+  const float ajustado = phOriginal + AJUSTE_FINAL_PH;
+  return std::isfinite(ajustado) && ajustado >= 0.0f && ajustado <= 14.0f
+      ? ajustado : std::numeric_limits<float>::quiet_NaN();
 }
 
 // Queda percentual do sinal em relação à amostra inicial, NÃO concentração em NTU.

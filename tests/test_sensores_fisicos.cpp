@@ -11,6 +11,12 @@ int main() {
   assert(std::isnan(converterPh(NAN)));
   assert(std::isnan(converterPh(0.0f)));
   assert(std::isnan(converterPh(3.3f)));
+  assert(std::abs(ajustarPhFinal(9.8f) - 6.8f) < 0.001f);
+  assert(std::abs(ajustarPhFinal(9.81f) - 6.81f) < 0.001f);
+  assert(ajustarPhFinal(3.0f) == 0.0f);
+  assert(ajustarPhFinal(14.0f) == 11.0f);
+  assert(std::isnan(ajustarPhFinal(2.9f))); // Não inventar zero para resultado negativo.
+  assert(std::isnan(ajustarPhFinal(NAN)));
   // Percentual de queda do sinal, sem relação arbitrária com NTU.
   assert(turbidezRelativa(2709) == 0.0f);
   assert(turbidezRelativa(3000) == 0.0f);
