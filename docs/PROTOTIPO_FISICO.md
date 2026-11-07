@@ -46,8 +46,6 @@ O JSON usa **`turbidez_relativa`**, em vez de `turbidez`. A API armazena o valor
 
 A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolts`, com 10 ms entre pares. Os logs mostram o GPIO35, ADC, milivolts no GPIO (conversão calibrada pelo suporte ADC do ESP32), tensão estimada na saída do módulo e ppm. As duas chamadas ADC são conversões distintas. Essa escala em milivolts é usada somente para TDS; a calibração existente do pH permanece inalterada.
 
-O GPIO35 inicia cada aquisição com atenuação de **0 dB**, para aproveitar melhor sinais baixos. Se a mediana atingir **3600** ou mais (ADC de12bits), a aquisição é repetida com **6 dB**, ampliando a faixa para sinais maiores. Após cada configuração, aguarda2ms e descarta o primeiro par ADC/mV. Os logs indicam a atenuação efetivamente utilizada; `analogReadMilliVolts` aplica a conversão da faixa selecionada, sem usar a escala nominal do pH. ADC bruto zero ou saturado continua inválido, mesmo que a rotina de conversão retorne mV positivos na extremidade. O ajuste não garante leitura até0V: a faixa baixa também possui limites e requer ensaio na placa. A seleção é feita somente no TDS, preservando pH e turbidez. A repetição acrescenta aproximadamente300ms à aquisição dos sinais maiores.
-
 O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente180 mV no GPIO**, e500–600 mV devem produzir300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
 
 A conversão usa a curva de referência DFRobot/GravityTDS, fator0,5 e compensação `V25 = Vmodulo / (1 + 0,02 × (temperatura − 25))` com temperatura real do DS18B20. O resultado é uma **estimativa não calibrada**, não garantia da concentração real nem de potabilidade. Saída acima2,3 V, estimativa fora0–1000 ppm, temperatura inválida e ADC nos extremos resultam em `tds:null`. Falha somente no TDS não bloqueia os outros parâmetros. A página local apresenta um cartão de **TDS estimado**, com ppm, ADC bruto e milivolts no GPIO35. TDS inválido aparece como indisponível. O cartão é atualizado mesmo quando outro sensor impede criar a medição completa para a API; os detalhes de tensão reconstruída continuam nos logs.
@@ -100,12 +98,8 @@ Os testes cobrem retenção e sobrescrita do buffer, fragmentos de linhas, limit
 ```sh
 g++ -std=c++11 -Wall -Wextra -Werror tests/test_sensores_fisicos.cpp -o /tmp/test_sensores_fisicos
 /tmp/test_sensores_fisicos
-g++ -std=c++11 -Wall -Wextra -Werror tests/test_leitura_adc_tds.cpp -o /tmp/test_leitura_adc_tds
-/tmp/test_leitura_adc_tds
 node tests/test_turbidez_scada.js
 pio run -d firmware/esp32/prototipo
 ```
 
 Os testes com MySQL descartável em `tests/test_tds.py` incluem ida e volta de turbidez relativa, TDS nulo, deduplicação e conflito entre unidades, rejeição de percentuais inválidos e adição da unidade sem perda de leituras anteriores. As verificações de software não substituem ensaio com o hardware e as soluções de referência.
-
-O teste nativo de aquisição TDS verifica a mediana com valores discrepantes, descarte inicial, seleção de0/6dB, retorno à faixa baixa na coleta seguinte e preservação de condições de zero/saturação. Esses testes usam um ADC simulado, não demonstram precisão nem sensibilidade física obtida.

@@ -87,7 +87,7 @@ static const char PAGINA_DIAGNOSTICO[] PROGMEM = R"html(<!doctype html>
 <section class="cartao">Fila e envio<strong id="fila">--</strong><div class="detalhe" id="envio">Aguardando estado</div></section></div>
 <p id="estado">Aguardando…</p><p>Logs em RAM; perdidos ao reiniciar.</p>
 <nav><button id="pausa">Pausar atualização</button><button id="limpar">Limpar tela</button><button id="baixar">Baixar logs</button><label><input type="checkbox" id="rolar" checked> Rolar automaticamente</label></nav>
-<pre id="logs" aria-label="Logs"></pre></main>
+<pre id="logs" aria-label="Logs do dispositivo"></pre></main>
 <script>
 const el=id=>document.getElementById(id);let cursor=0,sessao=null,pausado=false,linhas=[];
 const numero=(v,casas=2)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(casas):'indisponível';
@@ -105,7 +105,7 @@ if(d.perdidos)linhas.push('--- Buffer: linhas antigas sobrescritas ---');
 for(const l of d.logs){if(l.id>cursor){linhas.push(`[${(l.ms/1000).toFixed(1)} s] ${l.texto}`);cursor=l.id}}
 if(linhas.length>500)linhas=linhas.slice(-500);el('logs').textContent=linhas.join('\n');if(el('rolar').checked)el('logs').scrollTop=el('logs').scrollHeight;
 el('conexao').textContent='Conectado ao ESP32 · atualização local';el('conexao').className='ok'}
-async function atualizar(){if(!pausado){const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);try{const r=await fetch(`/api/diagnostico?apos=${cursor}&sessao=${sessao===null?'':sessao}`,{cache:'no-store',signal:c.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);renderizar(await r.json())}catch(e){el('conexao').textContent='Sem resposta. Confira Wi-Fi/IP; dados podem estar antigos.';el('conexao').className='erro'}finally{clearTimeout(t)}}setTimeout(atualizar,1000)}
+async function atualizar(){if(!pausado){const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);try{const r=await fetch(`/api/diagnostico?apos=${cursor}&sessao=${sessao===null?'':sessao}`,{cache:'no-store',signal:c.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);renderizar(await r.json())}catch(e){el('conexao').textContent='Sem resposta do ESP32. Confira o Wi-Fi e o endereço; dados abaixo podem estar antigos.';el('conexao').className='erro'}finally{clearTimeout(t)}}setTimeout(atualizar,1000)}
 el('pausa').onclick=()=>{pausado=!pausado;el('pausa').textContent=pausado?'Retomar atualização':'Pausar atualização';if(pausado)el('conexao').textContent='Atualização pausada'};
 el('limpar').onclick=()=>{linhas=[];el('logs').textContent=''};
 el('baixar').onclick=()=>{const u=URL.createObjectURL(new Blob([linhas.join('\n')],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download='logs-esp32.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};

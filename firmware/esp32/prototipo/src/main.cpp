@@ -8,7 +8,6 @@
 #include <DallasTemperature.h>
 #include "SensoresFisicos.h"
 #include "ConversaoTds.h"
-#include "LeituraAdcTds.h"
 #include "DiagnosticoLocal.h"
 
 OneWire oneWire(TEMPERATURA_PIN);
@@ -125,10 +124,10 @@ float lerPhCalibrado() {
   ultimoAdcPh = adc;
   const float tensao = tensaoEscalaCalibracao(adc);
   const float ph = converterPh(tensao);
-  Serial.printf("[PH] GPIO=%u | ADC=%u | Vcal=%.3f V | pH=%.2f\r\n",
+  Serial.printf("[PH] GPIO=%u | ADC=%u | tensão na escala da calibração=%.3f V | pH=%.2f\r\n",
       PH_PIN, adc, tensao, ph);
   if (!std::isfinite(ph) || ph < 0.0f || ph > 14.0f || adc == 0 || adc == 4095) {
-    Serial.println("[PH] Inválido: confira ligação/calibração");
+    Serial.println("[PH] ERRO: leitura fora da faixa; confira sonda, ligação e calibração");
     return NAN;
   }
   return ph;
@@ -139,7 +138,7 @@ float lerTurbidezRelativa() {
   ultimoAdcTurbidez = adc;
   const float turbidez = turbidezRelativa(adc);
   if (adc == 0 || adc == 4095 || !std::isfinite(turbidez)) {
-    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | inválido: saturação/referência\r\n",
+    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | sem medição: entrada saturada ou referência inválida\r\n",
         TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc));
     return NAN;
   }
@@ -160,31 +159,29 @@ float lerTemperatura() {
   return temperatura;
 }
 
-struct AdcTdsFisico {
-  void configurar(bool ampla) {
-    analogSetPinAttenuation(TDS_FISICO_PIN, ampla ? ADC_6db : ADC_0db);
-  }
-  uint16_t lerBruto() { return analogRead(TDS_FISICO_PIN); }
-  uint32_t lerMilivolts() { return analogReadMilliVolts(TDS_FISICO_PIN); }
-  void aguardar(unsigned long ms) { delay(ms); }
-};
-
 float lerTds(float temperatura) {
-  AdcTdsFisico entrada;
-  const LeituraAdcTds leitura = adquirirTds(entrada);
-  const uint16_t adc = leitura.bruto;
-  const uint32_t mv = leitura.milivolts;
+  uint16_t amostrasAdc[NUM_AMOSTRAS_FISICAS];
+  uint32_t amostrasMv[NUM_AMOSTRAS_FISICAS];
+  for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
+    amostrasAdc[i] = analogRead(TDS_FISICO_PIN);
+    amostrasMv[i] = analogReadMilliVolts(TDS_FISICO_PIN);
+    if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
+  }
+  std::sort(amostrasAdc, amostrasAdc + NUM_AMOSTRAS_FISICAS);
+  std::sort(amostrasMv, amostrasMv + NUM_AMOSTRAS_FISICAS);
+  const uint16_t adc = amostrasAdc[NUM_AMOSTRAS_FISICAS / 2];
+  const uint32_t mv = amostrasMv[NUM_AMOSTRAS_FISICAS / 2];
   ultimoAdcTds = adc;
   ultimosMvTds = mv;
   const float voltsModulo = tensaoModuloTds(mv);
   const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
-  Serial.printf("[TDS] GPIO=%u | atenuação=%u dB | ADC=%u | GPIO=%lu mV | módulo=%.3f V (10k/15k) | temperatura=%.2f C\r\n",
-      TDS_FISICO_PIN, leitura.faixaAmpla ? 6u : 0u, adc, static_cast<unsigned long>(mv), voltsModulo, temperatura);
+  Serial.printf("[TDS] GPIO=%u | ADC=%u | GPIO=%lu mV | módulo estimado=%.3f V (divisor 10k/15k) | temperatura=%.2f C\r\n",
+      TDS_FISICO_PIN, adc, static_cast<unsigned long>(mv), voltsModulo, temperatura);
   if (adc == 0 || adc == 4095 || mv == 0 || !std::isfinite(ppm)) {
-    Serial.println("[TDS] Inválido: sinal/faixa/temperatura; tds=null");
+    Serial.println("[TDS] Indisponível: confira sinal, divisor e temperatura; enviado null, sem bloquear os demais sensores");
     return NAN;
   }
-  Serial.printf("[TDS] Estimativa=%.1f ppm | sem calibração\r\n", ppm);
+  Serial.printf("[TDS] Estimativa=%.1f ppm | sem calibração com padrão TDS\r\n", ppm);
   return ppm;
 }
 
@@ -200,7 +197,7 @@ int enviarPostComRetry(const String& payload) {
   http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (!http.begin(client, serverUrl)) {
-    Serial.println("[ENVIO] Falha HTTPS; registro mantido");
+    Serial.println("[ENVIO] Não foi possível iniciar HTTPS; leitura continua no ESP32");
     consoleDiagnostico.envio(false, -1);
     client.stop(); return -1;
   }
@@ -244,7 +241,7 @@ void sendReading() {
       tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez), ADC_AGUA_REFERENCIA,
       tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
-    Serial.println("[LEITURA] Sensor inválido; coleta recusada, reenvio mantido");
+    Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");
     return;
   }
 
@@ -275,19 +272,19 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(PH_PIN, ADC_11db);
   analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
-  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_0db);
+  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_11db);
   sensorTemperatura.begin();
   sensorTemperatura.setResolution(12);
   sensorTemperatura.setWaitForConversion(true);
-  Serial.println("[SENSORES] GPIO: pH=34 | turbidez=32 | DS18B20=14 | TDS=35");
+  Serial.println("[SENSORES] pH=GPIO34 | turbidez relativa=GPIO32 | DS18B20=GPIO14 | TDS=GPIO35 (estimativa)");
 
   Serial.printf("[BOOT] Motivo do reset: %s\r\n", motivoReset());
   iniciarFilaLocal();
   atualizarEstadoDiagnostico();
   connectWiFi();
-  if (!diagnostico.iniciar()) Serial.println("[DIAGNOSTICO] Falha ao iniciar página");
+  if (!diagnostico.iniciar()) Serial.println("[DIAGNOSTICO] ERRO: não foi possível iniciar a página local");
 
-  Serial.println("\n[SETUP] Sincronizando NTP.br (Brasília)");
+  Serial.println("\n[SETUP] Sincronizando horario de Brasilia via NTP.br...");
   sntp_set_time_sync_notification_cb(aoSincronizarHorario);
   configTzTime(TIME_ZONE, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY, NTP_SERVER_TERTIARY);
 
@@ -301,13 +298,13 @@ void setup() {
   }
 
   if (relogioColeta.podeColetar(nowSec)) {
-    Serial.print("[SETUP] Horário sincronizado: ");
+    Serial.print("[SETUP] Horario de Brasilia sincronizado: ");
     Serial.println(getTimestamp());
   } else {
-    Serial.println("[SETUP] Sem NTP; coleta suspensa");
+    Serial.println("[SETUP] Sem sincronização NTP: coleta suspensa até o relógio sincronizar.");
   }
 
-  Serial.println("[SETUP] Loop iniciado; coleta exige NTP\n");
+  Serial.println("[SETUP] Loop iniciado; coleta depende de horário sincronizado.\n");
 }
 
 void loop() {
