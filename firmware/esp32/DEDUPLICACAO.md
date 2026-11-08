@@ -10,7 +10,7 @@ Os dois firmwares confirmam sucesso somente quando a resposta 200/201 contém `s
 
 ## Publicar a API antes de testar
 
-O Render precisa executar a API deste commit. Confirme a branch configurada no serviço e o commit do deploy; fazer push em `b.lucasdxl` não atualiza um serviço ligado à `main`. Se necessário, faça deploy manual da branch configurada com esta alteração. Não inicie o firmware novo contra a API anterior: ela não retorna a confirmação com UUID.
+A API publicada no Render precisa implementar a confirmação com UUID. Confirme a branch configurada no serviço e o commit do deploy; fazer push em `b.lucasdxl` não atualiza um serviço ligado à `main`. Se necessário, faça deploy manual da branch configurada com esta alteração. Não inicie o firmware novo contra a API anterior: ela não retorna a confirmação com UUID.
 
 ## Preparar uma instância Wokwi
 

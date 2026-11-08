@@ -20,13 +20,13 @@ O `static_assert` em `include/FilaCore.h` verifica que cada `RegistroFlash` ocup
 
 Esses valores são cálculos de projeto, não duração medida nem autonomia de bateria. O instante exato da primeira coleta depende de NTP/inicialização e de quando a interrupção começa; a duração é uma aproximação por quantidade de amostras. Com pendências prévias, usar `(1.000 − pendentes) × intervalo efetivo`. Alterar o intervalo muda a autonomia. Bloqueios de aquisição/HTTP e diferenças entre tempo simulado e real impedem garantir coleta a cada 10 segundos.
 
-A configuração padrão `default.csv` do Arduino-ESP32 3.3.12, usada no ambiente de compilação verificado, reserva `0x160000` bytes (**1.441.792 bytes = 1.375 KiB**) à partição de dados chamada `spiffs`, montada como LittleFS. Os 500 KiB de registros ocupam aproximadamente 35,5% dessa partição; o restante inclui metadados, outros arquivos e espaço necessário ao funcionamento do filesystem. A tabela real gravada no dispositivo deve coincidir com a configuração compilada. Não se altera a tabela de partições nesta mudança.
+A configuração padrão `default.csv` do Arduino-ESP32 3.3.12, usada no ambiente de compilação verificado, reserva `0x160000` bytes (**1.441.792 bytes = 1.375 KiB**) à partição de dados chamada `spiffs`, montada como LittleFS. Os 500 KiB de registros ocupam aproximadamente 35,5% dessa partição; o restante inclui metadados, outros arquivos e espaço necessário ao funcionamento do filesystem. A tabela real gravada no dispositivo deve coincidir com a configuração compilada. A implementação utiliza essa tabela sem modificações.
 
 ### Referências técnicas
 
 O tamanho de 512 bytes e a capacidade de 1.000 são características **desta implementação**, verificáveis no código; a duração é calculada pelos autores. A documentação da Espressif fundamenta a divisão da flash em partições, e seu arquivo de configuração fornece a alocação usada no cálculo:
 
-- ESPRESSIF SYSTEMS. **Partition Tables**. ESP-IDF Programming Guide. Disponível em: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/partition-tables.html>. Acesso em: 29 out. 2026. Texto-fonte consultado em <https://github.com/espressif/esp-idf/blob/master/docs/en/api-guides/partition-tables.rst> (a página renderizada estava bloqueada neste ambiente).
+- ESPRESSIF SYSTEMS. **Partition Tables**. ESP-IDF Programming Guide. Disponível em: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/partition-tables.html>. Acesso em: 29 out. 2026. Texto-fonte consultado em <https://github.com/espressif/esp-idf/blob/master/docs/en/api-guides/partition-tables.rst>.
 - ESPRESSIF SYSTEMS. **default.csv**. Arduino-ESP32, versão 3.3.12. Disponível em: <https://github.com/espressif/arduino-esp32/blob/3.3.12/tools/partitions/default.csv>. Acesso em: 29 out. 2026.
 
 O tempo nominal de retenção é um cálculo desta implementação, não uma especificação de autonomia fornecida pela Espressif.
@@ -39,7 +39,7 @@ No primeiro boot, se existem os arquivos legados `/fila-local.bin` e `/fila-loca
 
 Os arquivos legados ficam preservados, mas não voltam a ser importados depois que a fila v2 foi preparada. Ausência ou corrupção de arquivos ativos suspende a fila em vez de restaurar dados antigos ou apagar pendências. A atualização não requer `erase`, `uploadfs`, alteração das partições ou limpeza do banco. Outras mudanças de capacidade exigem migração própria.
 
-Horário é obrigatório: após cada boot, o firmware aguarda a confirmação de sincronização do SNTP antes de ler os sensores ou criar medições. O timeout inicial de conexão não libera a coleta; o loop continua aguardando o relógio sincronizar. A gravação na fila também recusa relógio inválido e `data_hora` ausente/vazia. Após sincronizar, a perda de Wi-Fi/API não interrompe o relógio local nem a coleta. Não há mais armazenamento por boot/uptime, reconstrução posterior de horário ou arquivos de revisão. Conforme autorizado para esta correção, pendências sem horário de versões anteriores são descartadas ao chegar à frente da fila, com aviso explícito `[LOCAL] DESCARTADA`. A remoção persiste o avanço do ACK local; não simula uma confirmação do banco. As leituras com data permanecem na ordem normal de envio. Se o ACK falhar, o descarte não avança e a fila é suspensa. Nenhuma data é inventada. Comece os testes de indisponibilidade depois de confirmar a sincronização NTP.
+Horário é obrigatório: após cada boot, o firmware aguarda a confirmação de sincronização do SNTP antes de ler os sensores ou criar medições. O timeout inicial de conexão não libera a coleta; o loop continua aguardando o relógio sincronizar. A gravação na fila também recusa relógio inválido e `data_hora` ausente/vazia. Após sincronizar, a perda de Wi-Fi/API não interrompe o relógio local nem a coleta. Não há mais armazenamento por boot/uptime, reconstrução posterior de horário ou arquivos de revisão. Pendências sem horário de versões anteriores são descartadas ao chegar à frente da fila, com aviso explícito `[LOCAL] DESCARTADA`. A remoção persiste o avanço do ACK local; não simula uma confirmação do banco. As leituras com data permanecem na ordem normal de envio. Se o ACK falhar, o descarte não avança e a fila é suspensa. Nenhuma data é inventada. Comece os testes de indisponibilidade depois de confirmar a sincronização NTP.
 
 ## Preparação no Wokwi
 
@@ -90,7 +90,7 @@ Com API ativa, interrompa temporariamente seu acesso ao MySQL. Deve haver erro n
 
 ### 5. Fila cheia
 
-Mantenha a comunicação interrompida até 1.000 pendências. A coleta seguinte deve mostrar erro de fila cheia; antigas não podem ser sobrescritas. Ao restabelecer o serviço, as 1.000 devem ser enviadas. Novas medições rejeitadas enquanto cheia não são recuperáveis. O preenchimento e a reutilização de slots também são cobertos pelo teste nativo abaixo, sem aguardar horas de simulação.
+Mantenha a comunicação interrompida até 1.000 pendências. A coleta seguinte deve mostrar erro de fila cheia; antigas não podem ser sobrescritas. Ao restabelecer o serviço, as 1.000 devem ser enviadas. Novas medições rejeitadas enquanto cheia não são recuperáveis. O preenchimento e a reutilização de slots também são cobertos por `tests/test_fila_1000.cpp`, sem aguardar horas de simulação.
 
 ### 6. Reinício
 

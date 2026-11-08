@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <limits>
 
-// GPIOs do firmware/teste físico enviados pelo usuário (diferem do esquema antigo).
+// Pinagem do protótipo físico; conferir diferenças em relação ao esquemático anterior.
 constexpr uint8_t PH_PIN = 34;
 constexpr uint8_t TURBIDEZ_FISICA_PIN = 32;
 constexpr uint8_t TDS_FISICO_PIN = 35;
@@ -12,21 +12,21 @@ constexpr uint8_t TEMPERATURA_PIN = 14;
 constexpr size_t NUM_AMOSTRAS_FISICAS = 31;
 constexpr unsigned long INTERVALO_AMOSTRAS_FISICAS_MS = 10;
 
-// Pontos confirmados pelo usuário. São tensões calculadas por ADC/4095 * 3,3
+// Pontos de calibração registrados na escala ADC/4095 * 3,3
 // NO GPIO, já após o divisor; não aplicar de novo o fator do divisor.
 constexpr float TENSAO_PH7 = 1.57f;
 constexpr float TENSAO_PH4 = 1.95f;
 constexpr float REFERENCIA_PH7 = 7.0f;
 constexpr float REFERENCIA_PH4 = 4.0f;
 
-// Deslocamento final solicitado pelo usuário. Não é nova calibração com padrões.
+// Correção aditiva após a conversão de pH; não substitui calibração com padrões.
 constexpr float AJUSTE_FINAL_PH = -3.0f;
 
 // Referência do código de teste. Reavaliar se mudar água, posição ou circuito.
 constexpr uint16_t ADC_AGUA_REFERENCIA = 2709;
 
 // Convenção de DEMONSTRAÇÃO, não calibração óptica em padrões NTU.
-// Referência fornecida pelo usuário na escala ADC*3,3/4095 do firmware.
+// Referência de demonstração na escala ADC*3,3/4095 do firmware.
 constexpr float TURBIDEZ_REFERENCIA_V = 1.591f;
 constexpr float TURBIDEZ_REFERENCIA_DEMO = 2.5f;
 constexpr float TURBIDEZ_GANHO_DEMO = 50.0f; // Unidades demonstrativas por volt.

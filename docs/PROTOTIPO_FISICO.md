@@ -1,21 +1,21 @@
 # Protótipo físico — pH, temperatura, turbidez demonstrativa e TDS estimado
 
-Esta versão integra os sensores do código de teste enviado pelo usuário. O TDS foi reativado no **GPIO35** após confirmação da ligação e observação de variação de tensão na saída do módulo. A suspeita anterior de avaria não foi confirmada. A aquisição reativada ainda precisa ser conferida na placa.
+O protótipo utiliza sensores de pH, temperatura, turbidez e TDS. O TDS está conectado ao **GPIO35** e apresentou resposta nos ensaios físicos, com variação da tensão de saída do módulo. As leituras permanecem sujeitas às limitações de aquisição e calibração descritas neste guia.
 
-## Ligações usadas nesta versão
+## Ligações dos sensores
 
 | Sensor | GPIO | Observação |
 | --- | --- | --- |
 | PH-4502C | 34 | Saída analógica pelo divisor já utilizado na calibração. |
-| Turbidez | **32** | Pinagem do código físico enviado, diferente do esquemático anterior (35). |
+| Turbidez | **32** | Pinagem do firmware físico; o esquemático anterior indica GPIO35. |
 | DS18B20 | 14 | Alimentação 3,3 V; pull-up de 4,7 kΩ entre DATA e 3,3 V. |
 | TDS | **35** | Saída analógica pelo divisor 10k/15k; ppm estimado, sem calibração com padrão. |
 
-Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. A duplicidade de GPIO34 para pH/TDS existente no teste do colega foi corrigida: pH usa34 e TDS usa35.
+Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. No firmware físico, pH e TDS usam entradas distintas: GPIO34 e GPIO35, respectivamente.
 
-## pH: pontos efetivamente confirmados
+## pH: conversão e ajuste
 
-O usuário confirmou as tensões **1,57 V para pH 7** e **1,95 V para pH 4**. São valores calculados no código de calibração por `ADC / 4095 × 3,3`, após o divisor, não a tensão reconstruída na saída do módulo. Para manter a calibração coerente, a implementação usa a mesma escala e não multiplica novamente pelo fator 1,6667.
+Os pontos de calibração registrados são **1,57 V para pH 7** e **1,95 V para pH 4**. São valores calculados no código de calibração por `ADC / 4095 × 3,3`, após o divisor, não a tensão reconstruída na saída do módulo. Para manter a calibração coerente, a implementação usa a mesma escala e não multiplica novamente pelo fator 1,6667.
 
 ```text
 V = ADC × 3,3 / 4095
@@ -23,29 +23,29 @@ pH_original = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
 pH_final = pH_original − 3
 ```
 
-O deslocamento final de **−3,0** foi solicitado pelo usuário após esses pontos de calibração. Fica em `AJUSTE_FINAL_PH`, em `SensoresFisicos.h`, e é aplicado antes dos cartões, do armazenamento e do envio:9,8→6,8. O log preserva o valor original, o ajuste e o resultado. Não é uma nova calibração experimental nem uma solução para interferência elétrica. Também desloca os pontos originais (pH7→4, pH4→1), exigindo conferência com referências antes de declarar exatidão. Resultado ajustado fora0–14 ou não finito permanece inválido, sem limitar artificialmente a0. O histórico não é recalculado.
+Após a conversão pelos pontos de calibração, aplica-se um deslocamento de **−3,0** ao resultado. Fica em `AJUSTE_FINAL_PH`, em `SensoresFisicos.h`, e é aplicado antes dos cartões, do armazenamento e do envio: 9,8 → 6,8. O log preserva o valor original, o ajuste e o resultado. Não é uma nova calibração experimental nem uma solução para interferência elétrica. Também desloca os pontos originais (pH 7 → 4, pH 4 → 1), exigindo conferência com referências antes de declarar exatidão. Resultado ajustado fora de 0–14 ou não finito permanece inválido, sem limitar artificialmente a 0. O histórico não é recalculado.
 
-O arquivo de teste usava 4,01 na fórmula, enquanto o relato do usuário identificou a solução como pH 4; esta versão usa **4,00**. Se o valor atribuído à solução for de fato 4,01, ajustar `REFERENCIA_PH4` em `firmware/esp32/include/SensoresFisicos.h`. Os coeficientes se referem à mesma atenuação, divisor, ADC e ajuste físico do módulo; não transportá-los para outra escala de leitura sem nova conferência.
+A referência adotada no firmware para a solução ácida é **pH 4,00**. Se o valor atribuído à solução for de fato 4,01, ajustar `REFERENCIA_PH4` em `firmware/esp32/include/SensoresFisicos.h`. Os coeficientes se referem à mesma atenuação, divisor, ADC e ajuste físico do módulo; não transportá-los para outra escala de leitura sem nova conferência.
 
 São lidas 31 amostras brutas, com 10 ms entre elas, e utilizada a mediana. A serial apresenta GPIO, ADC, tensão na escala de calibração e pH. Valores fora de 0–14, não finitos ou entrada saturada não são enviados como medição válida. A linearização com dois pontos não comprova a precisão em toda a escala.
 
 ## Temperatura
 
-O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a conversão antes de ler a temperatura. Leituras de sensor desconectado (`-127 °C`), não finitas ou fora de −55 a 125 °C são recusadas. Não usa mais o valor fixo de 22,5 °C. A leitura de 85 °C não é descartada automaticamente: após conversão, ela também pode representar uma temperatura real.
+O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a conversão antes de ler a temperatura. Leituras de sensor desconectado (`-127 °C`), não finitas ou fora de −55 a 125 °C são recusadas. A leitura de 85 °C não é descartada automaticamente: após conversão, ela também pode representar uma temperatura real.
 
 ## Turbidez: escala de demonstração com unidade exibida NTU
 
-A referência fornecida pelo usuário é **1,591 V**, assumida na escala nominal `ADC × 3,3/4095` utilizada no log físico, após o divisor. Esse ponto recebeu o valor **2,5** por convenção de demonstração; não foi medido com padrão óptico nem turbidímetro de referência. O ganho foi definido arbitrariamente como **50 unidades por volt**:
+A referência adotada para a demonstração é **1,591 V**, expressa na escala nominal `ADC × 3,3/4095` utilizada no log físico, após o divisor. Esse ponto recebeu o valor **2,5** por convenção de demonstração; não foi medido com padrão óptico nem turbidímetro de referência. O ganho foi definido arbitrariamente como **50 unidades por volt**:
 
 ```text
 valor demonstrativo = max(0, 2,5 + (Vgpio − 1,591) × 50)
 ```
 
-A faixa demonstrativa de 0 a 5 corresponde aproximadamente a 1,541–1,641 V. Sinal acima de 1,641 V ultrapassa 5; sinal abaixo de 1,541 V é limitado a 0. A direção foi invertida após o usuário observar aumento de tensão nos ensaios com papel e sal, e a referência atualizada para os 1,591 V mostrados na imagem. A relação continua sendo uma convenção de demonstração: a aparência ou o uso da água para consumo não comprova seu valor em NTU. O ganho de 50 unidades/V não foi validado com padrões ópticos. Os parâmetros ficam em `SensoresFisicos.h`. Mediana de 31 amostras/10 ms e rejeição de ADC 0/4095 permanecem. A referência mostrada no diagnóstico acompanha o parâmetro enviado pelo firmware, sem texto fixo desatualizado.
+A faixa demonstrativa de 0 a 5 corresponde aproximadamente a 1,541–1,641 V. Sinal acima de 1,641 V ultrapassa 5; sinal abaixo de 1,541 V é limitado a 0. Nos ensaios com papel e sal, observou-se aumento da tensão; a escala adotada associa esse aumento a valores demonstrativos maiores. A relação continua sendo uma convenção de demonstração: a aparência ou o uso da água para consumo não comprova seu valor em NTU. O ganho de 50 unidades/V não foi validado com padrões ópticos. Os parâmetros ficam em `SensoresFisicos.h`. Mediana de 31 amostras/10 ms e rejeição de ADC 0/4095 permanecem. A referência mostrada no diagnóstico acompanha o parâmetro enviado pelo firmware, sem texto fixo desatualizado.
 
 O cartão local e o SCADA mostram **NTU**, com indicação de **escala de demonstração** na descrição. O log e o histórico identificam os dados demonstrativos. O campo de entrada é `turbidez_demonstrativa`; a API o armazena em `turbidez` com unidade **`ntu_demonstrativo`**, sem alterar linhas antigas. Leituras anteriores em `percentual_relativo` continuam percentuais; as de `ntu` continuam com a unidade original. A confirmação de envio precisa corresponder à unidade do payload antes de liberar a fila.
 
-No SCADA, a faixa 0–5 e o alerta acima de 5 valem apenas para a escala demonstrativa. O limite anterior de 50 permanece nos registros `ntu`; percentuais não recebem alerta em NTU. O rótulo da demonstração deve ser preservado em relatórios e apresentações; não apresentar o ganho inventado como calibração física.
+A faixa de 0–5 faz parte da convenção demonstrativa. O código atual do SCADA dispara o alerta de turbidez acima de 50; esse limite difere da faixa de demonstração. A identificação da escala demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois o ganho adotado não constitui calibração física.
 
 **Publicar API e SCADA atualizados antes de gravar o firmware:** uma API antiga rejeita o campo novo com HTTP 400, preservando o registro na fila, em vez de armazenar a convenção como medição em NTU. Não apagar a fila nem reescrever medições antigas. Esse procedimento não resolve os conflitos HTTP 409 que já existiam.
 
@@ -53,17 +53,17 @@ No SCADA, a faixa 0–5 e o alerta acima de 5 valem apenas para a escala demonst
 
 A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolts`, com 10 ms entre pares. Os logs mostram o GPIO35, ADC, milivolts no GPIO (conversão calibrada pelo suporte ADC do ESP32), tensão estimada na saída do módulo e ppm. As duas chamadas ADC são conversões distintas. Essa escala em milivolts é usada somente para TDS; a calibração existente do pH permanece inalterada.
 
-O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente180 mV no GPIO**, e500–600 mV devem produzir300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
+O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente 180 mV no GPIO**, e 500–600 mV devem produzir 300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
 
 A conversão usa a curva de referência DFRobot/GravityTDS, fator 0,5 e compensação `V25 = Vmodulo / (1 + 0,02 × (temperatura − 25))` com temperatura real do DS18B20. O resultado é uma **estimativa não calibrada**, não garantia da concentração real nem de potabilidade. Para leitura válida, o firmware envia a estimativa e `tds_status=medido`. Tensão acima de 2,3 V, estimativa fora de 0–1000 ppm, temperatura inválida ou saturação permanecem indisponíveis. A condição específica de ADC zero é representada pela convenção descrita a seguir. O diagnóstico local mostra ppm, ADC e tensão do GPIO35, inclusive quando outro sensor impede gerar uma medição completa.
 
-Quando o ADC bruto é0 ou4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra“fora da faixa”no lugar dos mV nessas condições: valores calculados como142mV comADCzero podem ser o piso da conversão, não tensão efetivamente confirmada. O cálculo não foi alterado para produzir concentrações mínimas artificiais; a convenção de apresentação para ADC zero é descrita a seguir. O ajuste anterior de0/6dB foi revertido; TDS permanece em11dB e o divisor continua instalado. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
+Quando o ADC bruto é 0 ou 4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra “fora da faixa” no lugar dos mV nessas condições: valores calculados como 142 mV com ADC zero podem ser o piso da conversão, não tensão efetivamente confirmada. O cálculo não foi alterado para produzir concentrações mínimas artificiais; a convenção de apresentação para ADC zero é descrita a seguir. A entrada de TDS utiliza atenuação de 11 dB e mantém o divisor resistivo. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
 
-Por solicitação do usuário, uma aquisição com **ADC zero** apresenta **`< 50 ppm`** no diagnóstico local e nos logs. Nas novas medições completas, o ESP32 envia **`tds=50` e `tds_status=abaixo_50_visual`**. O número 50 é uma referência de apresentação, não uma concentração medida nem limite de detecção comprovado. A descrição local e o tooltip no SCADA registram essa distinção.
+Uma aquisição com **ADC zero** apresenta **`< 50 ppm`** no diagnóstico local e nos logs. Nas novas medições completas, o ESP32 envia **`tds=50` e `tds_status=abaixo_50_visual`**. O número 50 é uma referência de apresentação, não uma concentração medida nem limite de detecção comprovado. A descrição local e o tooltip no SCADA registram essa distinção.
 
 A API armazena os dois campos e devolve o status em POST e GET. O firmware confere o status na confirmação antes de liberar o registro. O SCADA usa o status para apresentar **`< 50 ppm` nos cartões e no histórico**, sem confundir uma medição real de 50 ppm (`medido`) com o valor de referência. Ao obter novamente sinal válido, a próxima medição usa o cálculo normal e `medido`. As demais falhas permanecem `tds=null, tds_status=indisponivel`.
 
-A inicialização da API cria, se necessário, a coluna nullable `tds_status VARCHAR(24)`; ela requer permissão ALTER na tabela. Leituras históricas não são reescritas: para registros sem status, GET interpreta valor numérico como `medido` e valor nulo como `indisponivel`. Registros antigos nulos continuam `--`; não é possível reconstruir sua causa. Status divergente no reenvio de um mesmo UUID gera conflito409. Publicar API e SCADA **antes de gravar o novo firmware**, pois versões anteriores não preservam nem confirmam o status. Não apagar a fila para aplicar a mudança.
+A inicialização da API cria, se necessário, a coluna nullable `tds_status VARCHAR(24)`; ela requer permissão ALTER na tabela. Leituras históricas não são reescritas: para registros sem status, GET interpreta valor numérico como `medido` e valor nulo como `indisponivel`. Registros antigos nulos continuam `--`; não é possível reconstruir sua causa. Status divergente no reenvio de um mesmo UUID gera conflito HTTP 409. Publicar API e SCADA **antes de gravar o novo firmware**, pois versões anteriores não preservam nem confirmam o status. Não apagar a fila para aplicar a mudança.
 
 
 O teste com papel dissolvido indica variação elétrica, mas não calibra TDS: partículas suspensas não equivalem a sólidos dissolvidos. Conferir o sinal primeiro e usar padrão apropriado para calibração futura.
@@ -77,7 +77,7 @@ Referência da curva: https://github.com/DFRobot/GravityTDS/blob/master/GravityT
 3. Compilar e gravar o projeto `firmware/esp32/prototipo` normalmente, **sem erase/uploadfs** para preservar a fila.
 4. Após NTP, conferir `[PH]`, `[TEMPERATURA]`, `[TURBIDEZ]`, `[TDS]`, `[LEITURA]` e `[BANCO]` na serial.
 
-A fila de 1.000 registros, as regras de horário e a deduplicação permanecem. Registros antigos na fila, inclusive TDS nulo, não são reescritos nem apagados. A reativação aplica-se somente às novas aquisições.
+A fila de 1.000 registros, as regras de horário e a deduplicação permanecem. Registros antigos na fila, inclusive TDS nulo, não são reescritos nem apagados. As regras atuais de aquisição aplicam-se às novas medições.
 
 Se um dos três sensores ativos produzir leitura inválida, a nova medição completa não é criada, pois a API exige pH, temperatura e turbidez. Os diagnósticos dos três continuam sendo impressos e o processamento das pendências não é interrompido. Isso evita inserir zeros ou valores fixos como se fossem medições reais.
 
@@ -87,11 +87,11 @@ O firmware físico disponibiliza uma página em **`http://IP_DO_ESP32/`**, na po
 
 Depois, a página pode ser acessada com o dispositivo alimentado pela bateria, sem USB. O celular/computador precisa alcançar o ESP32 na mesma rede local. Hotspots podem restringir o acesso entre dispositivos; se o endereço não abrir, conferir o IP e testar em uma rede Wi-Fi que permita essa comunicação. A página não depende do Render, da API ou do SCADA para mostrar diagnósticos.
 
-A tela apresenta pH, temperatura, turbidez em escala de demonstração, ADCs, tensões na escala de calibração, referência de turbidez, idade/validade da última leitura, situação do relógio, integridade da fila, quantidade de pendências e resultado HTTP do envio. Sensor inválido aparece como indisponível, sem substituir pelo último valor válido. O código também passou a mostrar no log o corpo da resposta de erro da API, limitado a 300 caracteres.
+A tela apresenta pH, temperatura, turbidez em escala de demonstração, ADCs, tensões na escala de calibração, referência de turbidez, idade/validade da última leitura, situação do relógio, integridade da fila, quantidade de pendências e resultado HTTP do envio. Sensor inválido aparece como indisponível, sem substituir pelo último valor válido. O log também apresenta o corpo da resposta de erro da API, limitado a 300 caracteres.
 
 Os logs de aplicação enviados ao `Serial` continuam saindo na UART e são copiados para um buffer circular em **RAM**, com as últimas **80 linhas**, de até 255 bytes cada. Linhas maiores são truncadas sem dividir um caractere UTF-8. O navegador consulta as novidades aproximadamente a cada segundo, mantém até 500 linhas na tela, detecta uma nova sessão após reinício e informa se registros antigos saíram do buffer. São disponibilizados pausa, limpeza somente da tela, rolagem automática e download do texto exibido.
 
-Os logs não são gravados na flash e desaparecem ao desligar/reiniciar; não substituem a fila persistente. Mensagens internas de bibliotecas/SDK que não passam pelo `Serial` da aplicação e informações de falha anteriores ao reset não são prometidas pela página. Os controles não apagam a fila, não alteram calibração e não acionam sensores.
+Os logs não são gravados na flash e desaparecem ao desligar/reiniciar; não substituem a fila persistente. Mensagens internas de bibliotecas/SDK que não passam pelo `Serial` da aplicação e informações de falha anteriores ao reset podem não estar disponíveis na página. Os controles não apagam a fila, não alteram calibração e não acionam sensores.
 
 O servidor HTTP local roda em uma tarefa FreeRTOS separada do loop que realiza aquisição e POST. Isso evita que um timeout da API bloqueie o atendimento da página. Leituras/status são compartilhados com sincronização e publicados sem acessar o estado da fila diretamente pela tarefa HTTP. A primeira disponibilização ocorre após a tentativa inicial de conexão Wi-Fi; o serviço acompanha desconexões e reconexões.
 

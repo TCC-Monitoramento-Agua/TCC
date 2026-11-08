@@ -11,7 +11,7 @@ int main() {
   assert(std::abs(estimarTdsPpm(tensaoModuloTds(600)) - 367.475f) < 0.01f);
   assert(std::abs(estimarTdsPpm(tensaoModuloTds(1200)) - 879.35f) < 0.01f);
   assert(estimarTdsPpm(0.0f) == 0.0f);
-  // Sinais observados pelo usuário na saída do módulo; após divisor ficam em 180/360 mV.
+  // Tensões de saída do módulo equivalentes a 180/360 mV após o divisor.
   assert(std::abs(tensaoModuloTds(180) - 0.3f) < 0.0001f);
   assert(std::abs(tensaoModuloTds(360) - 0.6f) < 0.0001f);
   assert(std::abs(estimarTdsCompensado(0.3f, 25.0f) - estimarTdsPpm(0.3f)) < 0.001f);

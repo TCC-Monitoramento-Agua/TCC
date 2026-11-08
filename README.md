@@ -10,7 +10,7 @@ Este guia apresenta a estrutura do projeto e os procedimentos para configurar a 
 |---|---|
 | Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e TDS. Não reproduz calibração química de sensores reais. |
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
-| SCADA | Cards da leitura mais recente por horário de medição, últimos 10 registros, identificação do equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
+| SCADA | Cartões da leitura mais recente por horário de medição, histórico de até 15 registros, filtros por equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
 | Protótipo físico | pH com dois pontos confirmados, DS18B20 real, turbidez em escala demonstrativa (NTU no cartão) e TDS estimado no GPIO35. Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
@@ -200,7 +200,7 @@ python -m http.server 5500 --directory SCADA
 
 Abra **http://127.0.0.1:5500** no navegador. Para a API existente no Render, mantenha o endereço original no JavaScript. Em uma publicação HTTPS do SCADA, a API também deve ser HTTPS, evitando bloqueio de conteúdo misto.
 
-O SCADA mostra a leitura mais recente por `data_hora`, com `id` como desempate, e os últimos 10 registros de todos os equipamentos. Não há seleção de equipamento nem gráficos nesta versão. Uma consulta bem-sucedida não comprova que o ESP32 continua coletando: confira também a data da última leitura.
+O SCADA mostra a leitura mais recente por `data_hora`, com `id` como desempate, e até 15 registros no histórico. O filtro permite selecionar um ou mais equipamentos entre as leituras carregadas. Não há gráficos temporais. Uma consulta bem-sucedida não comprova que o ESP32 continua coletando: confira também a data da última leitura.
 
 A atualização ocorre **5 segundos após terminar cada consulta**, com timeout de 60 segundos. O comentário e a mensagem de erro no JavaScript ainda mencionam 15 segundos, mas o valor executado é `INTERVALO_ATUALIZACAO = 5000`. A interface usa o fuso do dispositivo do visitante.
 
@@ -341,13 +341,13 @@ pio run -d firmware/esp32/prototipo --target upload
 pio device monitor --baud 115200
 ```
 
-Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. A configuração atual do físico usa **pH no GPIO 34**, **turbidez no GPIO 32** e **DS18B20 no GPIO 14**, conforme o código de teste enviado pelo usuário. Essa pinagem de turbidez difere do esquema anterior (GPIO 35); confira a ligação antes de gravar.
+Se houver várias portas, informe a porta correta com `--upload-port` no upload e `--port` no monitor. A configuração atual do físico usa **pH no GPIO 34**, **turbidez no GPIO 32** e **DS18B20 no GPIO 14**, conforme a pinagem definida no firmware físico. Essa pinagem de turbidez difere do esquema anterior (GPIO 35); confira a ligação antes de gravar.
 
 O pH utiliza os pontos confirmados de **1,57 V → pH 7** e **1,95 V → pH 4**, na escala `ADC / 4095 × 3,3` usada na calibração, já após o divisor. Os analógicos usam a mediana de 31 amostras, com 10 ms entre amostras. A temperatura é lida no DS18B20, sem valor fixo.
 
-O TDS foi reativado no **GPIO35**: os logs apresentam ADC, milivolts no GPIO e tensão reconstruída pelo divisor10k/15k. Os ppm são estimados pela curva de referência GravityTDS, com temperatura medida pelo DS18B20, sem calibração com padrão. ADC zero usa a convenção `tds=50, tds_status=abaixo_50_visual`, mostrada como `< 50 ppm` no diagnóstico e no SCADA. Leituras válidas enviam o resultado calculado com status `medido`; outras falhas usam `null/indisponivel`. O status fica salvo no banco e não converte o número 50 em uma medição confirmada. A aquisição reativada ainda precisa ser conferida no físico; registros históricos e simulações são preservados.
+O TDS utiliza o **GPIO35**: os logs apresentam ADC, milivolts no GPIO e tensão reconstruída pelo divisor de 10 kΩ/15 kΩ. Os ppm são estimados pela curva de referência GravityTDS, com temperatura medida pelo DS18B20, sem calibração com padrão. ADC zero usa a convenção `tds=50, tds_status=abaixo_50_visual`, mostrada como `< 50 ppm` no diagnóstico e no SCADA. Leituras válidas enviam o resultado calculado com status `medido`; outras falhas usam `null/indisponivel`. O status fica salvo no banco e não converte o número 50 em uma medição confirmada. A resposta do sensor foi observada em ensaios físicos, sem verificação da exatidão com solução padrão. Registros históricos e simulações são preservados.
 
-A turbidez física utiliza uma **escala de demonstração**, com referência fornecida de 1,591 V e relação arbitrária `max(0, 2,5 + (Vgpio − 1,591) × 50)`. O cartão exibe NTU; a descrição e o histórico identificam a demonstração. Não é conversão calibrada em padrões NTU. A API recebe `turbidez_demonstrativa` e preserva a unidade `ntu_demonstrativo`. O SCADA usa faixa demonstrativa0–5; registros antigos mantêm unidade e limites anteriores.
+A turbidez física utiliza uma **escala de demonstração**, com referência de 1,591 V e relação arbitrária `max(0, 2,5 + (Vgpio − 1,591) × 50)`. O cartão exibe NTU; a descrição e o histórico identificam a demonstração. Não é conversão calibrada em padrões NTU. A API recebe `turbidez_demonstrativa` e preserva a unidade `ntu_demonstrativo`. A escala demonstrativa adota a faixa de 0–5; o código atual do SCADA dispara o alerta de turbidez acima de 50. Registros antigos mantêm suas unidades.
 
 **Publicar API e SCADA atualizados antes de gravar o firmware.** A API acrescenta a coluna `tds_status` sem reescrever os registros antigos; o firmware exige a confirmação desse status. Uma API antiga não reconhece os novos metadados. Não alterar dados históricos para a nova escala. Detalhes de operação em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
 
