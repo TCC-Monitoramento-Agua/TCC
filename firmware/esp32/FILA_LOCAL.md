@@ -1,10 +1,10 @@
 # Fila local persistente
 
-Os dois firmwares usam a mesma fila LittleFS em `include/`. Capacidade: **1.000 medições**, em `CAPACIDADE_FILA` de `include/FilaLocal.h`. Cada slot ocupa 512 bytes; o arquivo cresce conforme a coleta, até **512.000 bytes (500 KiB)**, além dos metadados do sistema de arquivos. Não há pré-alocação do arquivo inteiro, tarefa paralela, botão ou mudança no circuito elétrico.
+Os dois firmwares usam a mesma fila LittleFS em `include/`. Capacidade: **1.000 medições**, em `CAPACIDADE_FILA` de `include/FilaLocal.h`. Cada slot ocupa 512 bytes; o arquivo cresce conforme a coleta, até **512.000 bytes (500 KiB)**, além dos metadados do sistema de arquivos. Não há pré-alocação do arquivo inteiro. No protótipo físico, uma tarefa separada atende a página de diagnóstico; a aquisição e os envios seguem no loop principal.
 
 Coleta → UUID/horário/valores → gravação verificada na flash → POST → confirmação da API → ACK local persistido. Um POST sem confirmação mantém a leitura. A fila envia primeiro a mais antiga. Resposta perdida permite reenvio com o mesmo UUID; a API evita duplicação. Falha de ACK local também permite reenvio após recuperação. CRC detecta registros inválidos; a fila suspende operação sem formatar dados existentes.
 
-Até dois POSTs confirmados por ciclo para reduzir as pendências mesmo com novas coletas; após uma falha, o lote é interrompido. Há espera progressiva de 5 até 60 segundos após falha; ao confirmar, o próximo pendente pode ser enviado após 250 ms. A coleta segue durante essas esperas e com Wi-Fi indisponível. Como esta versão não usa tarefas paralelas, o POST em andamento ainda bloqueia a coleta até retornar/expirar. Não garante aquisição a intervalo fixo durante um timeout. `SEND_INTERVAL = 10000` continua editável nos dois `main.cpp`; é a espera após finalizar a coleta, e chamadas HTTP podem atrasar o próximo ciclo. A autonomia de armazenamento depende do intervalo efetivo e da quantidade de pendências existentes.
+Até dois POSTs confirmados por ciclo para reduzir as pendências mesmo com novas coletas; após uma falha, o lote é interrompido. Há espera progressiva de 5 até 60 segundos após falha; ao confirmar, o próximo pendente pode ser enviado após 250 ms. A coleta segue durante essas esperas e com Wi-Fi indisponível. Como aquisição e envio são sequenciais, o POST em andamento ainda bloqueia a coleta até retornar/expirar. Não garante aquisição a intervalo fixo durante um timeout. `SEND_INTERVAL = 10000` continua editável nos dois `main.cpp`; é a espera após finalizar a coleta, e chamadas HTTP podem atrasar o próximo ciclo. A autonomia de armazenamento depende do intervalo efetivo e da quantidade de pendências existentes.
 
 Ao encher, a fila preserva as 1.000 pendências, rejeita novas medições e registra alerta: essas novas medições **podem ser perdidas**. Ao recuperar comunicação, o espaço volta a ser liberado e reutilizado. Uma falha elétrica durante escrita pode provocar registro inválido e exigir recuperação; testes nativos não substituem testes físicos de energia.
 
@@ -22,14 +22,14 @@ Esses valores são cálculos de projeto, não duração medida nem autonomia de 
 
 A configuração padrão `default.csv` do Arduino-ESP32 3.3.12, usada no ambiente de compilação verificado, reserva `0x160000` bytes (**1.441.792 bytes = 1.375 KiB**) à partição de dados chamada `spiffs`, montada como LittleFS. Os 500 KiB de registros ocupam aproximadamente 35,5% dessa partição; o restante inclui metadados, outros arquivos e espaço necessário ao funcionamento do filesystem. A tabela real gravada no dispositivo deve coincidir com a configuração compilada. Não se altera a tabela de partições nesta mudança.
 
-### Fontes para o relatório
+### Referências técnicas
 
 O tamanho de 512 bytes e a capacidade de 1.000 são características **desta implementação**, verificáveis no código; a duração é calculada pelos autores. A documentação da Espressif fundamenta a divisão da flash em partições, e seu arquivo de configuração fornece a alocação usada no cálculo:
 
 - ESPRESSIF SYSTEMS. **Partition Tables**. ESP-IDF Programming Guide. Disponível em: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/partition-tables.html>. Acesso em: 29 out. 2026. Texto-fonte consultado em <https://github.com/espressif/esp-idf/blob/master/docs/en/api-guides/partition-tables.rst> (a página renderizada estava bloqueada neste ambiente).
 - ESPRESSIF SYSTEMS. **default.csv**. Arduino-ESP32, versão 3.3.12. Disponível em: <https://github.com/espressif/arduino-esp32/blob/3.3.12/tools/partitions/default.csv>. Acesso em: 29 out. 2026.
 
-Não atribuir à Espressif uma autonomia de 2 h 46 min 40 s: essa é uma estimativa da fila deste projeto. Se houver outras obras da mesma autoria/data na bibliografia, ajustar a diferenciação das citações conforme o padrão adotado.
+O tempo nominal de retenção é um cálculo desta implementação, não uma especificação de autonomia fornecida pela Espressif.
 
 ## Atualização da fila antiga de 20 para 1.000 registros
 
@@ -106,23 +106,3 @@ WHERE equipamento_id = 'esp32-001'
 ```
 
 Deve haver uma linha, e o horário deve ser o da coleta, não o da reconexão. Guarde os logs desde a inicialização até o esvaziamento para identificar qualquer falha.
-
-## Teste da exigência de horário
-
-Na raiz, com um compilador C++ disponível:
-
-```sh
-g++ -std=c++11 -Wall -Wextra -pedantic tests/test_controle_horario.cpp -o /tmp/test_controle_horario
-/tmp/test_controle_horario
-```
-
-O teste verifica bloqueio antes da notificação de sincronização (mesmo com um valor plausível no relógio), liberação após sincronizar, recusa de data ausente/vazia e de relógio inválido, exigência de uma nova sincronização após reiniciar, descarte seletivo sem pular a ordem da fila, manutenção de leituras datadas e falha no ACK de descarte. A notificação real do SNTP e a aquisição na placa devem ser verificadas no teste físico.
-
-## Teste nativo da capacidade e atualização
-
-```sh
-g++ -std=c++11 -Wall -Wextra -Werror -Itests/fakes tests/test_fila_1000.cpp -o /tmp/test_fila_1000
-/tmp/test_fila_1000
-```
-
-Executa o `FlashStorage` real com adaptadores de filesystem em memória. Verifica: preenchimento dos 1.000 slots, rejeição do registro excedente, recuperação após reinicialização, confirmação e reutilização de posições, bloqueio de capacidade incompatível, migração do anel antigo já reutilizado, UUID/horário/FIFO preservados e interrupções de escrita/rename durante a migração. Também verifica que um ACK ativo ausente ou um legado corrompido não provocam apagamento nem restauração de registros antigos. A execução não simula o comportamento elétrico nem a implementação interna do LittleFS no hardware.

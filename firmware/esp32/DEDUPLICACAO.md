@@ -6,7 +6,7 @@ A API retorna 201 e `duplicada: false` na primeira gravação; em um reenvio id�
 
 A API adiciona a coluna `leitura_id` e o índice automaticamente ao banco existente, sem apagar leituras antigas. Linhas antigas permanecem com UUID NULL. Clientes antigos sem UUID continuam aceitos, mas seus envios não têm deduplicação. O usuário do banco precisa de permissão para ALTER TABLE; confira os logs do deploy se a migração falhar. O `schema.sql` serve para bancos novos e não altera sozinho uma tabela já existente.
 
-Os dois firmwares confirmam sucesso somente quando a resposta 200/201 contém `status: ok`, UUID e equipamento correspondentes e um ID positivo. A versão atual também guarda leituras em uma fila flash de 20 registros, descrita em FILA_LOCAL.md. A deduplicação permite reenvio seguro dessas pendências. Não resolve lentidão do Wokwi ou erro TLS.
+Os dois firmwares confirmam sucesso somente quando a resposta 200/201 contém `status: ok`, UUID e equipamento correspondentes e um ID positivo. A versão atual também guarda leituras em uma fila flash de 1.000 registros, descrita em FILA_LOCAL.md. A deduplicação permite reenvio seguro dessas pendências. Não resolve lentidão do Wokwi ou erro TLS.
 
 ## Publicar a API antes de testar
 

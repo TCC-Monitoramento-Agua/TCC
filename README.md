@@ -2,7 +2,7 @@
 
 Projeto de TCC para aquisição automática de pH, temperatura, turbidez e TDS com ESP32, envio em JSON para uma API Flask, armazenamento em MySQL e visualização em uma interface web SCADA.
 
-Este guia descreve a implementação atual e os objetivos do documento **“lucasbalintvilar_Projeto_Fisico_assinado - DVK.pdf”**. O PDF foi fornecido como referência do projeto e não está incluído neste repositório. Funcionalidades previstas no documento não devem ser consideradas concluídas apenas por constarem na proposta.
+Este guia apresenta a estrutura do projeto e os procedimentos para configurar a API, o banco de dados, a interface SCADA, a simulação e o protótipo físico.
 
 ## Estado atual
 
@@ -41,8 +41,8 @@ firmware/esp32/
   include/                    Fila persistente compartilhada
   prototipo/                  Projeto PlatformIO do protótipo físico
   .wokwi-instances/            Instâncias geradas, ignoradas pelo Git
-  DEDUPLICACAO.md              Teste de reenvio sem duplicação
-  FILA_LOCAL.md               Testes da fila e suas limitações
+  DEDUPLICACAO.md              Confirmação e reenvio sem duplicação
+  FILA_LOCAL.md               Persistência, dimensionamento e operação da fila
 ```
 
 ## Pré-requisitos
@@ -349,7 +349,7 @@ O TDS foi reativado no **GPIO35**: os logs apresentam ADC, milivolts no GPIO e t
 
 A turbidez física utiliza uma **escala de demonstração**, com referência fornecida de 1,591 V e relação arbitrária `max(0, 2,5 + (Vgpio − 1,591) × 50)`. O cartão exibe NTU; a descrição e o histórico identificam a demonstração. Não é conversão calibrada em padrões NTU. A API recebe `turbidez_demonstrativa` e preserva a unidade `ntu_demonstrativo`. O SCADA usa faixa demonstrativa0–5; registros antigos mantêm unidade e limites anteriores.
 
-**Publicar API e SCADA atualizados antes de gravar o firmware.** A API acrescenta a coluna `tds_status` sem reescrever os registros antigos; o firmware exige a confirmação desse status. Uma API antiga não reconhece os novos metadados. Não alterar dados históricos para a nova escala. Detalhes e testes em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
+**Publicar API e SCADA atualizados antes de gravar o firmware.** A API acrescenta a coluna `tds_status` sem reescrever os registros antigos; o firmware exige a confirmação desse status. Uma API antiga não reconhece os novos metadados. Não alterar dados históricos para a nova escala. Detalhes de operação em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md).
 
 A fila de 1.000 registros e a coleta condicionada ao horário sincronizado permanecem compartilhadas com a simulação. Se pH, temperatura ou turbidez tiver leitura inválida, a nova medição completa é recusada; o TDS é opcional e as pendências continuam sendo processadas. Não execute `erase`/`uploadfs` com pendências.
 
@@ -357,9 +357,9 @@ A fila de 1.000 registros e a coleta condicionada ao horário sincronizado perma
 
 O físico disponibiliza **`http://IP_DO_ESP32/`** com leituras, ADC/tensão, situação da fila, resultado dos envios e logs de aplicação. O endereço aparece na serial como `[DIAGNOSTICO] Acesse http://.../`; anote-o após a gravação e acesse pelo celular na mesma rede. Funciona com alimentação pela bateria e sem depender da API. São mantidas as últimas 80 linhas em RAM, com atualização automática, pausa e download do texto exibido. A página roda em tarefa separada para atender durante os POSTs. O acesso depende da comunicação permitida pela rede/hotspot. Detalhes e limitações em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md#diagnóstico-local-pelo-celular).
 
-## 10. Validação alinhada ao documento do TCC
+## 10. Verificações de funcionamento
 
-As seções de testes e análise de riscos do PDF (páginas 35–37) preveem falhas de comunicação, preservação de leituras, dados inválidos, operação contínua e comparação dos sensores com referências.
+Depois de configurar os serviços e o firmware, confira o envio, o armazenamento e a apresentação das leituras. Os procedimentos abaixo ajudam a verificar a operação e a identificar falhas de comunicação.
 
 | Teste | Critério de aceitação |
 |---|---|
@@ -374,7 +374,7 @@ As seções de testes e análise de riscos do PDF (páginas 35–37) preveem fal
 
 Procedimentos completos: [deduplicação](firmware/esp32/DEDUPLICACAO.md) e [fila local](firmware/esp32/FILA_LOCAL.md). Comece os testes de queda após NTP sincronizar e **não pare/recompile o Wokwi durante a interrupção**.
 
-Continuam pendentes a validação física desta integração, a conferência da referência relativa de turbidez, a recuperação/reintegração do TDS, gráficos históricos e ensaios físicos de energia e funcionamento prolongado. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
+A avaliação física deve considerar as limitações da escala demonstrativa de turbidez, da estimativa de TDS e da aquisição conjunta das sondas. O SCADA apresenta histórico em tabela; não há gráficos temporais nesta versão. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
 
 ## Problemas comuns
 

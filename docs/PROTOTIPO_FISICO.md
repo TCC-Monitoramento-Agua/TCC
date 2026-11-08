@@ -65,7 +65,6 @@ A API armazena os dois campos e devolve o status em POST e GET. O firmware confe
 
 A inicialização da API cria, se necessário, a coluna nullable `tds_status VARCHAR(24)`; ela requer permissão ALTER na tabela. Leituras históricas não são reescritas: para registros sem status, GET interpreta valor numérico como `medido` e valor nulo como `indisponivel`. Registros antigos nulos continuam `--`; não é possível reconstruir sua causa. Status divergente no reenvio de um mesmo UUID gera conflito409. Publicar API e SCADA **antes de gravar o novo firmware**, pois versões anteriores não preservam nem confirmam o status. Não apagar a fila para aplicar a mudança.
 
-Os testes de integração `tests/test_tds.py` verificam no MySQL local descartável a migração repetida sem perda de dados, a gravação de 50 com status, o retorno em GET/POST, reenvio idêntico, conflito com medição real de 50 e retorno a uma nova leitura calculada.
 
 O teste com papel dissolvido indica variação elétrica, mas não calibra TDS: partículas suspensas não equivalem a sólidos dissolvidos. Conferir o sinal primeiro e usar padrão apropriado para calibração futura.
 
@@ -98,27 +97,16 @@ O servidor HTTP local roda em uma tarefa FreeRTOS separada do loop que realiza a
 
 Rotas locais, apenas para consulta: `GET /` (HTML) e `GET /api/diagnostico?apos=N&sessao=S` (estado e logs novos). O servidor não oferece operações de apagar arquivos ou alterar configuração. A implementação usa WiFiServer e mantém a tabela de partições existente; não requer `erase` nem `uploadfs`.
 
-### Verificações da página e do buffer
+## Compilação e conferência de funcionamento
+
+Na raiz do repositório, compile o protótipo com:
 
 ```sh
-g++ -std=c++11 -Wall -Wextra -Werror tests/test_log_diagnostico.cpp -o /tmp/test_log_diagnostico
-/tmp/test_log_diagnostico
-node tests/test_diagnostico_pagina.js
-```
-
-Os testes cobrem retenção e sobrescrita do buffer, fragmentos de linhas, limites e truncamento UTF-8; renderização dos dados, indisponibilidade de sensores, cursores sem duplicação, reinício, limite de linhas no navegador, pausa e falha de rede. O acesso a partir de celular e a resposta durante um timeout real da API precisam ser conferidos no dispositivo físico.
-
-## Verificações da aquisição
-
-```sh
-g++ -std=c++11 -Wall -Wextra -Werror tests/test_sensores_fisicos.cpp -o /tmp/test_sensores_fisicos
-/tmp/test_sensores_fisicos
-node tests/test_turbidez_scada.js
 pio run -d firmware/esp32/prototipo
 ```
 
-Os testes com MySQL descartável em `tests/test_tds.py` incluem ida e volta de turbidez relativa, TDS nulo, deduplicação e conflito entre unidades, rejeição de percentuais inválidos e adição da unidade sem perda de leituras anteriores. As verificações de software não substituem ensaio com o hardware e as soluções de referência.
+Após gravar o firmware, confira as mensagens dos sensores, a sincronização NTP, os registros pendentes e as confirmações da API pela serial ou pela página local. As verificações com o dispositivo físico são necessárias para avaliar o comportamento elétrico, a montagem e a estabilidade das leituras.
 
 ## Página local comprimida
 
-Para manter o firmware na partição existente, o HTML foi separado em `firmware/esp32/include/PaginaDiagnostico.html`. O script pré-build `prototipo/gerar_pagina_diagnostico.py` gera um cabeçalho gzip dentro de `.pio/build`, sem dependências externas e sem escrever no LittleFS. A rota `/` envia `Content-Encoding: gzip`; o navegador descomprime normalmente. A rota de diagnóstico continua JSON. Editar o HTML fonte e compilar pelo PlatformIO regenera a página. Não executar erase nem uploadfs. Teste de geração/decompressão: `python -m unittest discover -s tests -p test_pagina_diagnostico_gzip.py -v`.
+Para manter o firmware na partição existente, o HTML foi separado em `firmware/esp32/include/PaginaDiagnostico.html`. O script pré-build `prototipo/gerar_pagina_diagnostico.py` gera um cabeçalho gzip dentro de `.pio/build`, sem dependências externas e sem escrever no LittleFS. A rota `/` envia `Content-Encoding: gzip`; o navegador descomprime normalmente. A rota de diagnóstico continua JSON. Editar o HTML fonte e compilar pelo PlatformIO regenera a página. Não executar erase nem uploadfs.

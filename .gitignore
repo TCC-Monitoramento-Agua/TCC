@@ -234,3 +234,9 @@ Thumbs.db
 
 # Projetos Wokwi gerados para testes simultâneos
 .wokwi-instances/
+
+# Materiais de desenvolvimento e apoio ao relatório, fora da entrega
+/tests/
+/docs/relatorio/
+/docs/SENSOR_PH.md
+/docs/FILA_RELATORIO.md
