@@ -376,6 +376,37 @@ Procedimentos completos: [deduplicação](firmware/esp32/DEDUPLICACAO.md) e [fil
 
 A avaliação física deve considerar as limitações da escala demonstrativa de turbidez, da estimativa de TDS e da aquisição conjunta das sondas. O SCADA apresenta histórico em tabela; não há gráficos temporais nesta versão. Várias simulações simultâneas têm apresentado falhas TLS intermitentes; aumentar a quantidade de Wokwis não é, sozinho, uma medição do limite da API.
 
+## Testes automatizados
+
+A pasta `tests/` reúne testes C++ dos componentes do firmware, testes JavaScript das interfaces e testes Python da API e da geração da página local. Execute os comandos a partir da raiz do repositório.
+
+Com as dependências Python instaladas:
+
+```sh
+python -m unittest discover -s tests -p "test_*.py" -v
+node tests/test_diagnostico_pagina.js
+node tests/test_turbidez_scada.js
+```
+
+Os testes de integração com MySQL são ignorados quando `TCC_TEST_MYSQL_PORT` não está configurada. Para executá-los, disponibilize um MySQL **local e descartável**, com banco `tcc_tests` e usuário `tcc_test`. No PowerShell:
+
+```powershell
+$env:TCC_TEST_MYSQL_PORT = "3307"
+$env:TCC_TEST_MYSQL_PASSWORD = "SENHA_DO_BANCO_LOCAL_DE_TESTES"
+python -m unittest discover -s tests -p "test_tds.py" -v
+```
+
+Esses testes recriam a tabela `leituras` no banco de testes. Não use dados de produção nesse banco. O código dos testes fixa a conexão em `127.0.0.1` e o nome `tcc_tests`.
+
+Os testes C++ exigem um compilador nativo com suporte a C++11. Exemplo:
+
+```sh
+g++ -std=c++11 -Wall -Wextra -Werror tests/test_sensores_fisicos.cpp -o teste_sensores
+g++ -std=c++11 -Wall -Wextra -Werror -Itests/fakes tests/test_fila_1000.cpp -o teste_fila
+```
+
+Execute os binários gerados: `./teste_sensores` e `./teste_fila` no Linux/macOS, ou `.\teste_sensores.exe` e `.\teste_fila.exe` no PowerShell. Os adaptadores em `tests/fakes` simulam o armazenamento nos testes da fila; não são usados no firmware gravado no ESP32.
+
 ## Problemas comuns
 
 | Sintoma | Verificação |
