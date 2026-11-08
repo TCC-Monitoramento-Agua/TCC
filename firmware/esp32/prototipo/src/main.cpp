@@ -50,8 +50,8 @@ const char* NTP_SERVER_SECONDARY = "b.ntp.br";
 const char* NTP_SERVER_TERTIARY = "c.ntp.br";
 
 // WiFi
-const char* ssid = "iPhone de Lucas";
-const char* password = "Lu@@2021";
+const char* ssid = "teste";
+const char* password = "teste123";
 
 // Configuracoes
 unsigned long lastSend = 0;
