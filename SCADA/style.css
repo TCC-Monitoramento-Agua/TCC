@@ -759,22 +759,25 @@ body {
   color: #38bdf8;
 }
 
-/* Dropdown Menu Flutuante */
+/* Dropdown Menu Flutuante de Seleção Múltipla */
 .dropdown-equipamentos {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
   width: 100%;
-  min-width: 270px;
+  min-width: 320px;
+  max-width: 440px;
   background: var(--bg-superficie);
   border: 1px solid var(--borda-destaque);
   border-radius: 14px;
-  box-shadow: 0 20px 40px -4px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 45px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: var(--backdrop-blur);
   -webkit-backdrop-filter: var(--backdrop-blur);
   z-index: 9999;
   overflow: hidden;
   animation: abrirDropdownAnim 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes abrirDropdownAnim {
@@ -789,9 +792,18 @@ body {
 }
 
 .dropdown-header {
-  padding: 10px 14px;
+  padding: 12px 14px 10px;
   background: rgba(255, 255, 255, 0.03);
   border-bottom: 1px solid var(--borda-suave);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dropdown-header-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -799,10 +811,49 @@ body {
   color: var(--texto-suave);
 }
 
+.dropdown-contador-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.dropdown-header-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.btn-dropdown-link {
+  background: none;
+  border: none;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+
+.btn-dropdown-link:hover {
+  color: #7dd3fc;
+}
+
+.separador-acoes {
+  color: var(--texto-suave);
+  font-size: 10px;
+}
+
 .dropdown-opcoes {
   max-height: 240px;
   overflow-y: auto;
-  padding: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -813,27 +864,55 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   border: 1px solid transparent;
   transition: var(--transicao);
+  user-select: none;
 }
 
 .dropdown-item:hover {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.2);
 }
 
 .dropdown-item.ativo {
-  background: rgba(56, 189, 248, 0.18);
-  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.35);
 }
 
 .dropdown-item-esquerda {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   overflow: hidden;
+  width: 100%;
+}
+
+/* Checkbox Customizado */
+.checkbox-custom {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--borda-destaque);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transicao);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.checkbox-custom.marcado {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.checkbox-custom .icone-check {
+  width: 12px;
+  height: 12px;
+  color: #ffffff;
 }
 
 .dropdown-item-icone {
@@ -870,12 +949,41 @@ body {
   text-overflow: ellipsis;
 }
 
-.dropdown-item-check {
-  color: #38bdf8;
-  font-weight: 800;
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-left: 8px;
+/* Rodapé do Dropdown com Concluir */
+.dropdown-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid var(--borda-suave);
+  gap: 10px;
+}
+
+.dropdown-dica {
+  font-size: 11px;
+  color: var(--texto-suave);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-dropdown-concluir {
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #0284c7;
+  color: #ffffff;
+  border: 1px solid #38bdf8;
+  cursor: pointer;
+  transition: var(--transicao);
+}
+
+.btn-dropdown-concluir:hover {
+  background: #0369a1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
 }
 
 /* Grupo de Badges do Cabeçalho da Tabela */

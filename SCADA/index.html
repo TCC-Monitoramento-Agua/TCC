@@ -1,23 +1,32 @@
 <!DOCTYPE html>
 <html lang="pt-BR" data-theme="dark">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SCADA • Sistema de Monitoramento da Qualidade da Água</title>
 
+  <!-- Favicon com o ícone da gota d'água SCADA -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="alternate icon" type="image/png" href="favicon.png" />
+
   <!-- Google Fonts: Plus Jakarta Sans para interface e JetBrains Mono para telemetria numérica -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <!-- Cabeçalho Principal SCADA -->
   <header class="topo">
     <div class="topo-branding">
       <div class="logo-badge">
-        <svg class="icone-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icone-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
           <path d="M12 12a3 3 0 0 1 3 3"></path>
         </svg>
@@ -37,8 +46,10 @@
       </div>
 
       <!-- Alternador de Tema Dark/Light -->
-      <button id="themeToggle" class="btn-theme" type="button" aria-label="Alternar tema" title="Alternar entre modo escuro e claro">
-        <svg class="icone-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button id="themeToggle" class="btn-theme" type="button" aria-label="Alternar tema"
+        title="Alternar entre modo escuro e claro">
+        <svg class="icone-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="5"></circle>
           <line x1="12" y1="1" x2="12" y2="3"></line>
           <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -49,7 +60,8 @@
           <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
           <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
         </svg>
-        <svg class="icone-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="icone-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
       </button>
@@ -69,7 +81,8 @@
       <article class="card card-ph">
         <div class="card-topo">
           <div class="card-icone-wrap">
-            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M10 2v4.5l-5.5 9.5a3 3 0 0 0 2.6 4.5h9.8a3 3 0 0 0 2.6-4.5L14 6.5V2"></path>
               <path d="M8.5 2h7"></path>
               <path d="M7 16h10"></path>
@@ -97,7 +110,8 @@
       <article class="card card-temp">
         <div class="card-topo">
           <div class="card-icone-wrap">
-            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
               <circle cx="11.5" cy="17.5" r="2.2" fill="currentColor"></circle>
               <line x1="11.5" y1="9" x2="11.5" y2="15"></line>
@@ -115,7 +129,8 @@
         </div>
 
         <div class="card-rodape">
-          <span class="card-faixa"><span class="indicador-faixa"></span> Faixa ideal: <strong>20.0 °C a 30.0 °C</strong></span>
+          <span class="card-faixa"><span class="indicador-faixa"></span> Faixa ideal: <strong>20.0 °C a 30.0
+              °C</strong></span>
         </div>
       </article>
 
@@ -123,7 +138,8 @@
       <article class="card card-tds">
         <div class="card-topo">
           <div class="card-icone-wrap">
-            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
           </div>
@@ -139,7 +155,8 @@
         </div>
 
         <div class="card-rodape">
-          <span class="card-faixa"><span class="indicador-faixa"></span> Faixa configurada: <strong>50 a 300 ppm</strong></span>
+          <span class="card-faixa"><span class="indicador-faixa"></span> Faixa configurada: <strong>50 a 300
+              ppm</strong></span>
         </div>
       </article>
 
@@ -147,7 +164,8 @@
       <article class="card card-turbidez">
         <div class="card-topo">
           <div class="card-icone-wrap">
-            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="card-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 13c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path>
               <path d="M2 18c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"></path>
               <circle cx="6" cy="6" r="1.5" fill="currentColor"></circle>
@@ -159,7 +177,7 @@
             <h2>Turbidez</h2>
             <span class="card-subtitulo">Transparência Óptica</span>
           </div>
-          <span id="unidadeTurbidez" class="card-tag">NTU</span>
+          <span class="card-tag">NTU</span>
         </div>
 
         <div class="card-valor-wrap">
@@ -167,7 +185,8 @@
         </div>
 
         <div class="card-rodape">
-          <span class="card-faixa"><span class="indicador-faixa"></span> <span id="faixaTurbidez">Limite configurado: <strong>&le; 50.0 NTU</strong></span></span>
+          <span class="card-faixa"><span class="indicador-faixa"></span> Limite seguro: <strong>&lt; 5.0
+              NTU</strong></span>
         </div>
       </article>
     </section>
@@ -177,7 +196,8 @@
       <div class="painel-cabecalho">
         <div class="painel-titulo-grupo">
           <div class="painel-icone-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
@@ -192,9 +212,11 @@
 
       <div class="info-leitura">
         <!-- Chip Interativo: Equipamento com Dropdown Selecionável -->
-        <div class="info-chip info-chip-interativo" id="chipEquipamento" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" title="Clique para filtrar por equipamento">
+        <div class="info-chip info-chip-interativo" id="chipEquipamento" tabindex="0" role="button"
+          aria-haspopup="listbox" aria-expanded="false" title="Clique para filtrar por equipamento">
           <div class="chip-icone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
               <rect x="4" y="4" width="16" height="16" rx="2"></rect>
               <rect x="9" y="9" width="6" height="6"></rect>
               <line x1="9" y1="1" x2="9" y2="4"></line>
@@ -215,25 +237,40 @@
             <span id="equipamentoLeitura" class="chip-valor">--</span>
           </div>
           <div class="chip-chevron" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </div>
 
-          <!-- Menu Dropdown Flutuante de Seleção de Equipamento -->
-          <div class="dropdown-equipamentos oculto" id="dropdownEquipamentos" role="listbox" aria-label="Selecione o equipamento para filtrar">
+          <!-- Menu Dropdown Flutuante de Seleção Múltipla de Equipamento -->
+          <div class="dropdown-equipamentos oculto" id="dropdownEquipamentos" role="listbox"
+            aria-label="Selecione um ou mais equipamentos para filtrar" aria-multiselectable="true">
             <div class="dropdown-header">
-              <span>Filtrar por Equipamento</span>
+              <div class="dropdown-header-titulo">
+                <span>Filtrar por Equipamento</span>
+                <span class="dropdown-contador-badge" id="dropdownContadorBadge">Todos</span>
+              </div>
+              <div class="dropdown-header-acoes">
+                <button type="button" id="btnDropdownSelecionarTodos" class="btn-dropdown-link">Marcar Todos</button>
+                <span class="separador-acoes">•</span>
+                <button type="button" id="btnDropdownLimpar" class="btn-dropdown-link">Limpar</button>
+              </div>
             </div>
             <div class="dropdown-opcoes" id="listaOpcoesEquipamentos">
               <!-- Gerado dinamicamente via script.js -->
+            </div>
+            <div class="dropdown-rodape">
+              <span class="dropdown-dica" id="dropdownDica">Selecione 1 ou mais equipamentos</span>
+              <button type="button" id="btnDropdownConcluir" class="btn-dropdown-concluir">Concluir</button>
             </div>
           </div>
         </div>
 
         <div class="info-chip">
           <div class="chip-icone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
               <line x1="8" y1="2" x2="8" y2="6"></line>
@@ -248,7 +285,8 @@
 
         <div class="info-chip">
           <div class="chip-icone">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
               <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
             </svg>
           </div>
@@ -267,7 +305,8 @@
       <div class="painel-cabecalho">
         <div class="painel-titulo-grupo">
           <div class="painel-icone-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
               <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
               <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
               <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
@@ -275,14 +314,15 @@
           </div>
           <div>
             <h2>Histórico Recente</h2>
-            <span class="painel-desc" id="descricaoTabela">Últimas 10 medições consolidadas no banco de dados</span>
+            <span class="painel-desc" id="descricaoTabela">Últimas 15 medições consolidadas no banco de dados</span>
           </div>
         </div>
         <div class="tabela-badges-grupo">
-          <button id="btnLimparFiltro" class="btn-limpar-filtro oculto" type="button" title="Voltar a exibir todos os equipamentos">
+          <button id="btnLimparFiltro" class="btn-limpar-filtro oculto" type="button"
+            title="Voltar a exibir todos os equipamentos">
             Limpar Filtro ✕
           </button>
-          <span class="badge-contagem" id="badgeContagemTabela">10 registros máx.</span>
+          <span class="badge-contagem" id="badgeContagemTabela">15 registros máx.</span>
         </div>
       </div>
 
@@ -308,4 +348,5 @@
 
   <script src="script.js"></script>
 </body>
+
 </html>
