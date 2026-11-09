@@ -35,14 +35,14 @@ O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a c
 
 ## Turbidez: escala de demonstração com unidade exibida NTU
 
-A aquisição no GPIO32 utiliza a mediana de 31 amostras, com 10 ms entre amostras. A tensão e o resultado são calculados conforme a curva utilizada no ensaio:
+A aquisição no GPIO32 utiliza medianas de 31 amostras de ADC bruto e `analogReadMilliVolts`, com 10 ms entre pares. As chamadas são conversões distintas. A tensão em volts é obtida dividindo os milivolts por 1.000, sem usar uma escala nominal de 2,7 V ou 3,3 V. Os pontos de referência foram medidos após o divisor: água limpa com 1,970 V e café com 0,07 V. A atribuição de 0 e 1.000 a esses pontos define uma escala demonstrativa, sem calibração com padrões NTU.
 
 ```text
-V = ADC × 2,7 / 4095
-valor demonstrativo = min(1000, max(0, 1000 × (1 − V / 1,8)))
+V = milivolts_GPIO / 1000
+valor demonstrativo = min(1000, max(0, 1000 × (1,970 − V) / (1,970 − 0,07)))
 ```
 
-A escala de 2,7 V foi mantida do ensaio e não altera a escala de 3,3 V utilizada pelo pH. A referência de água limpa é 1,8 V nessa mesma escala. Não há reconstrução pelo divisor resistivo nessa conversão. A relação é inversa e limitada entre 0 e 1.000: 1,8 V ou mais resulta em 0; 0,9 V resulta em 500; ADC zero resulta em 1.000 por convenção demonstrativa. ADC 4095 ou resultado não finito permanece indisponível. Tampar a entrada de luz ou ter sinal ausente também pode produzir ADC zero; esse ponto não comprova 1.000 NTU físicos. Os logs e a página local sinalizam essa condição. Não houve calibração com padrões ópticos e a curva quadrática anterior não é mais utilizada.
+A leitura começa com atenuação de 11 dB; abaixo de 800 mV ou com ADC zero, repete a aquisição em 0 dB apenas no GPIO32. Após a mudança, aguarda estabilização e descarta as primeiras conversões. A faixa de 0 dB melhora a aquisição de sinais baixos, mas não garante que 70 mV estejam na faixa útil do ADC do ESP32 utilizado. Se o ADC continuar em zero, o firmware registra tensão não confirmada e usa 1.000 somente como máximo demonstrativo; sinal ausente ou obstrução também podem causar essa condição. O diagnóstico mostra a tensão como indisponível nesse caso, sem substituir por 0,07 V. ADC 4095 ou resultado não finito permanece indisponível. pH e TDS conservam suas próprias configurações de aquisição.
 
 O cartão local e o SCADA mostram **NTU**, com indicação de **escala de demonstração** na descrição. O log e o histórico identificam os dados demonstrativos. O campo de entrada é `turbidez_demonstrativa`; a API o armazena em `turbidez` com unidade **`ntu_demonstrativo`**, sem alterar linhas antigas. Leituras anteriores em `percentual_relativo` continuam percentuais; as de `ntu` continuam com a unidade original. A confirmação de envio precisa corresponder à unidade do payload antes de liberar a fila.
 

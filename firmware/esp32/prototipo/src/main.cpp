@@ -34,6 +34,7 @@ DiagnosticoLocal diagnostico(consoleDiagnostico, EQUIPAMENTO_ID);
 #include "FilaLocal.h"
 
 uint16_t ultimoAdcPh = 0, ultimoAdcTurbidez = 0;
+float ultimaTensaoTurbidez = NAN;
 uint16_t ultimoAdcTds = 0;
 uint32_t ultimosMvTds = 0;
 
@@ -135,20 +136,47 @@ float lerPhCalibrado() {
 }
 
 float lerTurbidezCurva() {
-  const uint16_t adc = lerMedianaAdc(TURBIDEZ_FISICA_PIN);
+  uint16_t adc = 0;
+  uint32_t mv = 0;
+  const auto amostrar = [&]() {
+    uint16_t brutas[NUM_AMOSTRAS_FISICAS];
+    uint32_t milivolts[NUM_AMOSTRAS_FISICAS];
+    delay(2);
+    analogRead(TURBIDEZ_FISICA_PIN); // Descarta a primeira conversão após mudar a faixa.
+    analogReadMilliVolts(TURBIDEZ_FISICA_PIN);
+    for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
+      brutas[i] = analogRead(TURBIDEZ_FISICA_PIN);
+      milivolts[i] = analogReadMilliVolts(TURBIDEZ_FISICA_PIN);
+      if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
+    }
+    std::sort(brutas, brutas + NUM_AMOSTRAS_FISICAS);
+    std::sort(milivolts, milivolts + NUM_AMOSTRAS_FISICAS);
+    adc = brutas[NUM_AMOSTRAS_FISICAS / 2];
+    mv = milivolts[NUM_AMOSTRAS_FISICAS / 2];
+  };
+  analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
+  amostrar();
+  const bool faixaBaixa = adc == 0 || mv < 800;
+  if (faixaBaixa) {
+    analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_0db);
+    amostrar();
+  }
   ultimoAdcTurbidez = adc;
-  const double volts = tensaoTurbidez(adc);
+  ultimaTensaoTurbidez = adc == 0 || adc == 4095 ? NAN : mv / 1000.0f;
+  if (adc == 0) {
+    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=0 | atenuação=0 dB | tensão abaixo da faixa útil ou sinal ausente; máximo demonstrativo=1000 NTU; tensão não confirmada\r\n",
+        TURBIDEZ_FISICA_PIN);
+    return TURBIDEZ_MAXIMA_DEMO;
+  }
+  const double volts = ultimaTensaoTurbidez;
   const double turbidez = calcularTurbidezCurva(volts);
   if (adc == 4095 || !std::isfinite(turbidez)) {
-    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | sem medição: entrada saturada ou resultado fora da faixa\r\n",
+    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | GPIO=%.3f V | sem medição: entrada saturada ou resultado fora da faixa\r\n",
         TURBIDEZ_FISICA_PIN, adc, volts);
     return NAN;
   }
-  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | escala inversa=%.1f NTU (demonstração)\r\n",
-      TURBIDEZ_FISICA_PIN, adc, volts, turbidez);
-  if (adc == 0) {
-    Serial.println("[TURBIDEZ] ADC zero: máximo da escala demonstrativa; sinal ausente ou obstrução também podem causar essa leitura");
-  }
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | atenuação=%u dB | GPIO=%lu mV (%.3f V) | escala inversa=%.1f NTU (demonstração)\r\n",
+      TURBIDEZ_FISICA_PIN, adc, faixaBaixa ? 0u : 11u, static_cast<unsigned long>(mv), volts, turbidez);
   return turbidez;
 }
 
@@ -253,7 +281,7 @@ void sendReading() {
   const float turbidez = lerTurbidezCurva();
   const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
-      tensaoEscalaCalibracao(ultimoAdcPh), tensaoTurbidez(ultimoAdcTurbidez), 0,
+      tensaoEscalaCalibracao(ultimoAdcPh), ultimaTensaoTurbidez, 0,
       tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");

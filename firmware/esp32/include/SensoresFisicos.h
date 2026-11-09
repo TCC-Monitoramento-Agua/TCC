@@ -25,20 +25,17 @@ constexpr float AJUSTE_FINAL_PH = -3.0f;
 // Referência do código de teste. Reavaliar se mudar água, posição ou circuito.
 constexpr uint16_t ADC_AGUA_REFERENCIA = 2709;
 
-// Escala do ensaio de turbidez; sem ajuste com padrões ópticos.
-constexpr double TURBIDEZ_ESCALA_ADC_V = 2.7;
-constexpr double TURBIDEZ_AGUA_LIMPA_V = 1.8;
+// Referências medidas no GPIO, após o divisor; escala demonstrativa.
+constexpr double TURBIDEZ_AGUA_LIMPA_V = 1.970;
+constexpr double TURBIDEZ_REFERENCIA_ESCURA_V = 0.07;
 constexpr double TURBIDEZ_MAXIMA_DEMO = 1000.0;
-
-inline double tensaoTurbidez(uint16_t adc) {
-  return adc * (TURBIDEZ_ESCALA_ADC_V / 4095.0);
-}
 
 inline double calcularTurbidezCurva(double volts) {
   if (!std::isfinite(volts) || volts < 0.0) {
     return std::numeric_limits<double>::quiet_NaN();
   }
-  const double valor = TURBIDEZ_MAXIMA_DEMO * (1.0 - volts / TURBIDEZ_AGUA_LIMPA_V);
+  const double valor = TURBIDEZ_MAXIMA_DEMO * (TURBIDEZ_AGUA_LIMPA_V - volts) /
+      (TURBIDEZ_AGUA_LIMPA_V - TURBIDEZ_REFERENCIA_ESCURA_V);
   if (valor < 0.0) return 0.0;
   return valor > TURBIDEZ_MAXIMA_DEMO ? TURBIDEZ_MAXIMA_DEMO : valor;
 }
