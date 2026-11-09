@@ -25,6 +25,17 @@ constexpr float AJUSTE_FINAL_PH = -3.0f;
 // Referência do código de teste. Reavaliar se mudar água, posição ou circuito.
 constexpr uint16_t ADC_AGUA_REFERENCIA = 2709;
 
+// Escala e curva do ensaio de turbidez; sem ajuste com padrões ópticos.
+constexpr double TURBIDEZ_ESCALA_ADC_V = 2.7;
+
+inline double tensaoTurbidez(uint16_t adc) {
+  return adc * (TURBIDEZ_ESCALA_ADC_V / 4095.0);
+}
+
+inline double calcularTurbidezCurva(double volts) {
+  return -(1120.4 * volts * volts) + (5742.3 * volts) - 4352.9;
+}
+
 // Convenção de DEMONSTRAÇÃO, não calibração óptica em padrões NTU.
 // Referência de demonstração na escala ADC*3,3/4095 do firmware.
 constexpr float TURBIDEZ_REFERENCIA_V = 1.591f;

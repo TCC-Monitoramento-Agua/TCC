@@ -134,17 +134,18 @@ float lerPhCalibrado() {
   return ph;
 }
 
-float lerTurbidezDemonstrativa() {
+float lerTurbidezCurva() {
   const uint16_t adc = lerMedianaAdc(TURBIDEZ_FISICA_PIN);
   ultimoAdcTurbidez = adc;
-  const float turbidez = turbidezDemonstrativa(tensaoEscalaCalibracao(adc));
-  if (adc == 0 || adc == 4095 || !std::isfinite(turbidez)) {
-    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | sem medição: entrada saturada ou referência inválida\r\n",
-        TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc));
+  const double volts = tensaoTurbidez(adc);
+  const double turbidez = calcularTurbidezCurva(volts);
+  if (adc == 0 || adc == 4095 || !std::isfinite(turbidez) || turbidez < 0.0) {
+    Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | sem medição: entrada saturada ou resultado fora da faixa\r\n",
+        TURBIDEZ_FISICA_PIN, adc, volts);
     return NAN;
   }
-  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC=%.3f V | referência=%.3f V | %.1f NTU (demonstração)\r\n",
-      TURBIDEZ_FISICA_PIN, adc, tensaoEscalaCalibracao(adc), TURBIDEZ_REFERENCIA_V, turbidez);
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | curva quadrática=%.1f NTU (demonstração)\r\n",
+      TURBIDEZ_FISICA_PIN, adc, volts, turbidez);
   return turbidez;
 }
 
@@ -246,11 +247,10 @@ void sendReading() {
   const String horarioColeta = getTimestamp();
   const float ph = lerPhCalibrado();
   const float temperatura = lerTemperatura();
-  const float turbidez = lerTurbidezDemonstrativa();
+  const float turbidez = lerTurbidezCurva();
   const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
-      tensaoEscalaCalibracao(ultimoAdcPh), tensaoEscalaCalibracao(ultimoAdcTurbidez),
-      static_cast<uint16_t>(TURBIDEZ_REFERENCIA_V * 4095.0f / 3.3f + 0.5f),
+      tensaoEscalaCalibracao(ultimoAdcPh), tensaoTurbidez(ultimoAdcTurbidez), 0,
       tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");

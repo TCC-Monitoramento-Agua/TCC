@@ -35,17 +35,18 @@ O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a c
 
 ## Turbidez: escala de demonstração com unidade exibida NTU
 
-A referência adotada para a demonstração é **1,591 V**, expressa na escala nominal `ADC × 3,3/4095` utilizada no log físico, após o divisor. Esse ponto recebeu o valor **2,5** por convenção de demonstração; não foi medido com padrão óptico nem turbidímetro de referência. O ganho foi definido arbitrariamente como **50 unidades por volt**:
+A aquisição no GPIO32 utiliza a mediana de 31 amostras, com 10 ms entre amostras. A tensão e o resultado são calculados conforme a curva utilizada no ensaio:
 
 ```text
-valor demonstrativo = max(0, 2,5 + (Vgpio − 1,591) × 50)
+V = ADC × 2,7 / 4095
+NTU = −1120,4 × V² + 5742,3 × V − 4352,9
 ```
 
-A faixa demonstrativa de 0 a 5 corresponde aproximadamente a 1,541–1,641 V. Sinal acima de 1,641 V ultrapassa 5; sinal abaixo de 1,541 V é limitado a 0. Nos ensaios com papel e sal, observou-se aumento da tensão; a escala adotada associa esse aumento a valores demonstrativos maiores. A relação continua sendo uma convenção de demonstração: a aparência ou o uso da água para consumo não comprova seu valor em NTU. O ganho de 50 unidades/V não foi validado com padrões ópticos. Os parâmetros ficam em `SensoresFisicos.h`. Mediana de 31 amostras/10 ms e rejeição de ADC 0/4095 permanecem. A referência mostrada no diagnóstico acompanha o parâmetro enviado pelo firmware, sem texto fixo desatualizado.
+A escala de 2,7 V é específica desse cálculo e não altera a escala de 3,3 V utilizada pelo pH. Não há reconstrução pelo divisor resistivo nessa conversão. Os coeficientes não foram ajustados com padrões ópticos no protótipo; o resultado mantém a identificação demonstrativa. ADC 0/4095, resultados negativos ou não finitos são sinalizados como indisponíveis e impedem a criação de uma nova medição completa. O diagnóstico local mostra a mesma tensão usada na curva. A relação linear anterior, baseada em 1,591 V, não é mais utilizada na aquisição física.
 
 O cartão local e o SCADA mostram **NTU**, com indicação de **escala de demonstração** na descrição. O log e o histórico identificam os dados demonstrativos. O campo de entrada é `turbidez_demonstrativa`; a API o armazena em `turbidez` com unidade **`ntu_demonstrativo`**, sem alterar linhas antigas. Leituras anteriores em `percentual_relativo` continuam percentuais; as de `ntu` continuam com a unidade original. A confirmação de envio precisa corresponder à unidade do payload antes de liberar a fila.
 
-A faixa de 0–5 faz parte da convenção demonstrativa. O código atual do SCADA dispara o alerta de turbidez acima de 50; esse limite difere da faixa de demonstração. A identificação da escala demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois o ganho adotado não constitui calibração física.
+A curva não é limitada à faixa de 0–5. O código atual do SCADA dispara o alerta de turbidez acima de 50. A identificação demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois a equação não comprova calibração física do conjunto utilizado.
 
 **Publicar API e SCADA atualizados antes de gravar o firmware:** uma API antiga rejeita o campo novo com HTTP 400, preservando o registro na fila, em vez de armazenar a convenção como medição em NTU. Não apagar a fila nem reescrever medições antigas. Esse procedimento não resolve os conflitos HTTP 409 que já existiam.
 
