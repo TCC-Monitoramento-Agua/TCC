@@ -39,14 +39,14 @@ A aquisição no GPIO32 utiliza a mediana de 31 amostras, com 10 ms entre amostr
 
 ```text
 V = ADC × 2,7 / 4095
-NTU = −1120,4 × V² + 5742,3 × V − 4352,9
+valor demonstrativo = min(1000, max(0, 1000 × (1 − V / 1,8)))
 ```
 
-A escala de 2,7 V é específica desse cálculo e não altera a escala de 3,3 V utilizada pelo pH. Não há reconstrução pelo divisor resistivo nessa conversão. Os coeficientes não foram ajustados com padrões ópticos no protótipo; o resultado mantém a identificação demonstrativa. ADC 0/4095, resultados negativos ou não finitos são sinalizados como indisponíveis e impedem a criação de uma nova medição completa. O diagnóstico local mostra a mesma tensão usada na curva. A relação linear anterior, baseada em 1,591 V, não é mais utilizada na aquisição física.
+A escala de 2,7 V foi mantida do ensaio e não altera a escala de 3,3 V utilizada pelo pH. A referência de água limpa é 1,8 V nessa mesma escala. Não há reconstrução pelo divisor resistivo nessa conversão. A relação é inversa e limitada entre 0 e 1.000: 1,8 V ou mais resulta em 0; 0,9 V resulta em 500; ADC zero resulta em 1.000 por convenção demonstrativa. ADC 4095 ou resultado não finito permanece indisponível. Tampar a entrada de luz ou ter sinal ausente também pode produzir ADC zero; esse ponto não comprova 1.000 NTU físicos. Os logs e a página local sinalizam essa condição. Não houve calibração com padrões ópticos e a curva quadrática anterior não é mais utilizada.
 
 O cartão local e o SCADA mostram **NTU**, com indicação de **escala de demonstração** na descrição. O log e o histórico identificam os dados demonstrativos. O campo de entrada é `turbidez_demonstrativa`; a API o armazena em `turbidez` com unidade **`ntu_demonstrativo`**, sem alterar linhas antigas. Leituras anteriores em `percentual_relativo` continuam percentuais; as de `ntu` continuam com a unidade original. A confirmação de envio precisa corresponder à unidade do payload antes de liberar a fila.
 
-A curva não é limitada à faixa de 0–5. O código atual do SCADA dispara o alerta de turbidez acima de 50. A identificação demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois a equação não comprova calibração física do conjunto utilizado.
+A escala demonstrativa é limitada à faixa de 0–1.000. O código atual do SCADA dispara o alerta de turbidez acima de 50. A identificação demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois a equação não comprova calibração física do conjunto utilizado.
 
 **Publicar API e SCADA atualizados antes de gravar o firmware:** uma API antiga rejeita o campo novo com HTTP 400, preservando o registro na fila, em vez de armazenar a convenção como medição em NTU. Não apagar a fila nem reescrever medições antigas. Esse procedimento não resolve os conflitos HTTP 409 que já existiam.
 

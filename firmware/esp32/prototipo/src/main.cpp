@@ -139,13 +139,16 @@ float lerTurbidezCurva() {
   ultimoAdcTurbidez = adc;
   const double volts = tensaoTurbidez(adc);
   const double turbidez = calcularTurbidezCurva(volts);
-  if (adc == 0 || adc == 4095 || !std::isfinite(turbidez) || turbidez < 0.0) {
+  if (adc == 4095 || !std::isfinite(turbidez)) {
     Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | sem medição: entrada saturada ou resultado fora da faixa\r\n",
         TURBIDEZ_FISICA_PIN, adc, volts);
     return NAN;
   }
-  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | curva quadrática=%.1f NTU (demonstração)\r\n",
+  Serial.printf("[TURBIDEZ] GPIO=%u | ADC=%u | escala ADC 2.7 V=%.3f V | escala inversa=%.1f NTU (demonstração)\r\n",
       TURBIDEZ_FISICA_PIN, adc, volts, turbidez);
+  if (adc == 0) {
+    Serial.println("[TURBIDEZ] ADC zero: máximo da escala demonstrativa; sinal ausente ou obstrução também podem causar essa leitura");
+  }
   return turbidez;
 }
 

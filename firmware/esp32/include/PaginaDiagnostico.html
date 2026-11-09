@@ -17,7 +17,7 @@ const numero=(v,casas=2)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(casa
 function renderizar(d){const e=d.estado;if(sessao!==null&&sessao!==d.sessao){linhas=['--- ESP32 reiniciado; nova sessão ---'];cursor=0}sessao=d.sessao;
 el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V\nAjuste final: −3,0`:'Aguardando leitura';
 el('temperatura').textContent=numero(e.temperatura)+' °C';el('turbidez').textContent=numero(e.turbidez,1)+' NTU';
-el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nEscala ADC (2,7 V): ${numero(e.turbidez_volts,3)} V\nCurva quadrática de demonstração.`:'Aguardando leitura';
+el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nEscala ADC (2,7 V): ${numero(e.turbidez_volts,3)} V\nEscala inversa: 1,8 V → 0; 0 V → 1000 (demonstração).${e.turbidez_adc===0?' Sinal ausente ou obstrução também podem causar ADC zero.':''}`:'Aguardando leitura';
 const rotuloTdsBaixo=e.leu&&e.tds_adc===0&&!Number.isFinite(e.tds);
 el('tds').textContent=rotuloTdsBaixo?'< 50 ppm':numero(e.tds,1)+(Number.isFinite(e.tds)?' ppm':'');
 el('tdsInfo').textContent=e.leu?`GPIO 35 · ADC ${e.tds_adc}\nGPIO: ${e.tds_adc===0||e.tds_adc===4095?'fora da faixa':e.tds_mv+' mV'}\n${rotuloTdsBaixo?'Faixa visual configurada; sinal ausente/baixo, concentração não confirmada.':'Compensação térmica; sem calibração.'}`:'Aguardando leitura';
