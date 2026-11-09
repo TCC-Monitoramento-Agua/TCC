@@ -124,10 +124,9 @@ float lerPhCalibrado() {
   const uint16_t adc = lerMedianaAdc(PH_PIN);
   ultimoAdcPh = adc;
   const float tensao = tensaoEscalaCalibracao(adc);
-  const float phOriginal = converterPh(tensao);
-  const float ph = ajustarPhFinal(phOriginal);
-  Serial.printf("[PH] GPIO=%u | ADC=%u | Vcal=%.3f V | original=%.2f | ajuste=%.1f | pH=%.2f\r\n",
-      PH_PIN, adc, tensao, phOriginal, AJUSTE_FINAL_PH, ph);
+  const float ph = converterPh(tensao);
+  Serial.printf("[PH] GPIO=%u | ADC=%u | Vcal=%.3f V | pH=%.2f\r\n",
+      PH_PIN, adc, tensao, ph);
   if (!std::isfinite(ph) || ph < 0.0f || ph > 14.0f || adc == 0 || adc == 4095) {
     Serial.println("[PH] ERRO: leitura fora da faixa; confira sonda, ligação e calibração");
     return NAN;
@@ -281,7 +280,7 @@ void sendReading() {
   const float turbidez = lerTurbidezCurva();
   const float tds = lerTds(temperatura);
   consoleDiagnostico.leitura(ph, temperatura, turbidez, ultimoAdcPh, ultimoAdcTurbidez,
-      tensaoEscalaCalibracao(ultimoAdcPh), ultimaTensaoTurbidez, 0,
+      tensaoEscalaCalibracao(ultimoAdcPh), ultimaTensaoTurbidez,
       tds, ultimoAdcTds, ultimosMvTds);
   if (!std::isfinite(ph) || !std::isfinite(temperatura) || !std::isfinite(turbidez)) {
     Serial.println("[LEITURA] Medição não criada: sensor ativo com leitura inválida; pendências continuam sendo enviadas");

@@ -13,17 +13,16 @@ O protótipo utiliza sensores de pH, temperatura, turbidez e TDS. O TDS está co
 
 Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. No firmware físico, pH e TDS usam entradas distintas: GPIO34 e GPIO35, respectivamente.
 
-## pH: conversão e ajuste
+## pH: conversão
 
 Os pontos de calibração registrados são **1,57 V para pH 7** e **1,95 V para pH 4**. São valores calculados no código de calibração por `ADC / 4095 × 3,3`, após o divisor, não a tensão reconstruída na saída do módulo. Para manter a calibração coerente, a implementação usa a mesma escala e não multiplica novamente pelo fator 1,6667.
 
 ```text
 V = ADC × 3,3 / 4095
-pH_original = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
-pH_final = pH_original − 3
+pH = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
 ```
 
-Após a conversão pelos pontos de calibração, aplica-se um deslocamento de **−3,0** ao resultado. Fica em `AJUSTE_FINAL_PH`, em `SensoresFisicos.h`, e é aplicado antes dos cartões, do armazenamento e do envio: 9,8 → 6,8. O log preserva o valor original, o ajuste e o resultado. Não é uma nova calibração experimental nem uma solução para interferência elétrica. Também desloca os pontos originais (pH 7 → 4, pH 4 → 1), exigindo conferência com referências antes de declarar exatidão. Resultado ajustado fora de 0–14 ou não finito permanece inválido, sem limitar artificialmente a 0. O histórico não é recalculado.
+O resultado dos pontos de calibração é utilizado diretamente no diagnóstico, no armazenamento e no envio, sem deslocamento adicional de −3. As interferências observadas com outras sondas no mesmo recipiente permanecem uma limitação a ser investigada; sua causa não foi confirmada e não é corrigida por um ajuste constante de pH. Valores não finitos ou fora de 0–14 permanecem inválidos. Os registros históricos não são recalculados.
 
 A referência adotada no firmware para a solução ácida é **pH 4,00**. Se o valor atribuído à solução for de fato 4,01, ajustar `REFERENCIA_PH4` em `firmware/esp32/include/SensoresFisicos.h`. Os coeficientes se referem à mesma atenuação, divisor, ADC e ajuste físico do módulo; não transportá-los para outra escala de leitura sem nova conferência.
 

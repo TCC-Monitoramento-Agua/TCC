@@ -15,7 +15,7 @@
 const el=id=>document.getElementById(id);let cursor=0,sessao=null,pausado=false,linhas=[];
 const numero=(v,casas=2)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(casas):'indisponível';
 function renderizar(d){const e=d.estado;if(sessao!==null&&sessao!==d.sessao){linhas=['--- ESP32 reiniciado; nova sessão ---'];cursor=0}sessao=d.sessao;
-el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V\nAjuste final: −3,0`:'Aguardando leitura';
+el('ph').textContent=numero(e.ph);el('phInfo').textContent=e.leu?`GPIO 34 · ADC ${e.ph_adc}\nEscala da calibração: ${numero(e.ph_volts,3)} V`:'Aguardando leitura';
 el('temperatura').textContent=numero(e.temperatura)+' °C';el('turbidez').textContent=numero(e.turbidez,1)+' NTU';
 el('turbidezInfo').textContent=e.leu?`GPIO 32 · ADC ${e.turbidez_adc}\nGPIO: ${numero(e.turbidez_volts,3)} V\nEscala inversa: 1,970 V → 0; 0,07 V → 1000 (demonstração).${e.turbidez_adc===0?' Tensão abaixo da faixa útil ou sinal ausente; máximo demonstrativo, tensão não confirmada.':''}`:'Aguardando leitura';
 const rotuloTdsBaixo=e.leu&&e.tds_adc===0&&!Number.isFinite(e.tds);
