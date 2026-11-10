@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS leituras (
     turbidez_unidade VARCHAR(24) NOT NULL DEFAULT 'ntu',
     temperatura FLOAT NOT NULL,
     tds FLOAT NULL,
+    tds_status VARCHAR(24) NULL,
+    conteudo_hash CHAR(64) NULL,
     data_hora DATETIME NOT NULL,
     UNIQUE KEY uq_equipamento_leitura (equipamento_id, leitura_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

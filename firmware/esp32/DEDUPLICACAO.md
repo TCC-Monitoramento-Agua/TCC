@@ -2,15 +2,15 @@
 
 Cada coleta cria um `leitura_id` UUID v4. O `id` auto incrementado continua identificando a linha no MySQL. A chave única `(equipamento_id, leitura_id)` impede que tentativas simultâneas ou reenvios criem duas linhas para a mesma medição. UUID, valores e horário são definidos antes do POST e permanecem iguais nas tentativas.
 
-A API retorna 201 e `duplicada: false` na primeira gravação; em um reenvio idêntico retorna 200, `duplicada: true` e o mesmo `id`. Mesmo identificador com valores ou horário diferentes retorna 409. Números são comparados com tolerância de 1e-6 para acomodar o armazenamento FLOAT no MySQL. Cada nova coleta cria outro UUID, mesmo se os valores dos sensores forem iguais.
+A API retorna 201 e `duplicada: false` na primeira gravação; em um reenvio idêntico retorna 200, `duplicada: true` e o mesmo `id`. Mesmo identificador com valores ou horário diferentes retorna 409. Novas leituras gravam `conteudo_hash` (SHA-256 dos valores normalizados, horário, unidade e status do TDS), na mesma transação que o registro. O reenvio com o mesmo conteúdo é confirmado pelo hash, independentemente do arredondamento dos campos FLOAT. Registros anteriores, sem hash, são consultados pelo protocolo binário do MySQL e comparados com tolerância relativa e absoluta de 1e-6, evitando arredondamento decimal adicional do protocolo de texto. Cada nova coleta cria outro UUID, mesmo se os valores dos sensores forem iguais.
 
-A API adiciona a coluna `leitura_id` e o índice automaticamente ao banco existente, sem apagar leituras antigas. Linhas antigas permanecem com UUID NULL. Clientes antigos sem UUID continuam aceitos, mas seus envios não têm deduplicação. O usuário do banco precisa de permissão para ALTER TABLE; confira os logs do deploy se a migração falhar. O `schema.sql` serve para bancos novos e não altera sozinho uma tabela já existente.
+A API adiciona as colunas `leitura_id` e `conteudo_hash` e o índice automaticamente ao banco existente, sem apagar leituras antigas. O hash permanece NULL nas leituras anteriores; ele não é reconstruído a partir dos números arredondados do banco. Linhas antigas permanecem com UUID NULL. Clientes antigos sem UUID continuam aceitos, mas seus envios não têm deduplicação. O usuário do banco precisa de permissão para ALTER TABLE; confira os logs do deploy se a migração falhar. O `schema.sql` serve para bancos novos e não altera sozinho uma tabela já existente.
 
 Os dois firmwares confirmam sucesso somente quando a resposta 200/201 contém `status: ok`, UUID e equipamento correspondentes e um ID positivo. A versão atual também guarda leituras em uma fila flash de 1.000 registros, descrita em FILA_LOCAL.md. A deduplicação permite reenvio seguro dessas pendências. Não resolve lentidão do Wokwi ou erro TLS.
 
-## Publicar a API antes de testar
+## Publicação da API
 
-A API publicada no Render precisa implementar a confirmação com UUID. Confirme a branch configurada no serviço e o commit do deploy; fazer push em `b.lucasdxl` não atualiza um serviço ligado à `main`. Se necessário, faça deploy manual da branch configurada com esta alteração. Não inicie o firmware novo contra a API anterior: ela não retorna a confirmação com UUID.
+A API publicada no Render precisa implementar a confirmação com UUID e o armazenamento de `conteudo_hash`. Após publicar a correção de reenvio, o ESP32 pode continuar enviando as pendências sem nova gravação do firmware. Um conflito real retorna os campos divergentes, com os valores armazenados e recebidos, e é registrado no log da API. A fila não deve ser apagada para contornar conflitos. Confirme a branch configurada no serviço e o commit do deploy; fazer push em `b.lucasdxl` não atualiza um serviço ligado à `main`. Se necessário, faça deploy manual da branch configurada com esta alteração. Não inicie o firmware novo contra a API anterior: ela não retorna a confirmação com UUID.
 
 ## Preparar uma instância Wokwi
 
