@@ -1,6 +1,8 @@
 import os
 import re
 import math
+import hashlib
+import json
 from uuid import UUID
 from contextlib import closing
 from datetime import datetime
@@ -99,10 +101,18 @@ def init_db() -> None:
                 temperatura FLOAT NOT NULL,
                 tds FLOAT NULL,
                 tds_status VARCHAR(24) NULL,
+                conteudo_hash CHAR(64) NULL,
                 data_hora DATETIME NOT NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        cursor.execute("SHOW COLUMNS FROM leituras LIKE 'conteudo_hash'")
+        if cursor.fetchone() is None:
+            try:
+                cursor.execute("ALTER TABLE leituras ADD COLUMN conteudo_hash CHAR(64) NULL")
+            except mysql.connector.Error as error:
+                if error.errno != 1060:
+                    raise
         cursor.execute("SHOW COLUMNS FROM leituras LIKE 'tds_status'")
         if cursor.fetchone() is None:
             try:
@@ -300,6 +310,11 @@ def receber_leitura():
         medicao_id = str(UUID(dados["leitura_id"])) if "leitura_id" in dados else None
         if not all(math.isfinite(value) for value in (ph, turbidez, temperatura) + (() if tds is None else (tds,))):
             raise ValueError("Os valores devem ser números finitos")
+        # Preserva a identidade do conteúdo recebido, antes de arredondamentos FLOAT.
+        conteudo_hash = hashlib.sha256(json.dumps(
+            [ph, turbidez, temperatura, tds, data_hora, turbidez_unidade, tds_status],
+            ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
 
     except ValueError as error:
         return jsonify(
@@ -311,17 +326,19 @@ def receber_leitura():
 
     try:
         with closing(get_connection()) as conn:
-            cursor = conn.cursor()
+            # Protocolo binário: evita arredondamento decimal adicional na leitura
+            # de FLOAT, importante para comparar registros anteriores ao hash.
+            cursor = conn.cursor(prepared=True)
 
             duplicada = False
             try:
                 cursor.execute(
                     """
                     INSERT INTO leituras
-                    (equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (equipamento_id, leitura_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status, conteudo_hash)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status),
+                    (dados.get("equipamento_id"), medicao_id, ph, turbidez, turbidez_unidade, temperatura, tds, data_hora, tds_status, conteudo_hash),
                 )
                 conn.commit()
                 registro_id = cursor.lastrowid
@@ -330,20 +347,57 @@ def receber_leitura():
                 if error.errno != 1062 or medicao_id is None:
                     raise
                 cursor.execute(
-                    "SELECT id, ph, turbidez, temperatura, tds, data_hora, turbidez_unidade, COALESCE(tds_status, IF(tds IS NULL, 'indisponivel', 'medido')) FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
+                    "SELECT id, ph, turbidez, temperatura, tds, data_hora, turbidez_unidade, COALESCE(tds_status, IF(tds IS NULL, 'indisponivel', 'medido')), conteudo_hash FROM leituras WHERE equipamento_id = %s AND leitura_id = %s",
                     (dados["equipamento_id"], medicao_id),
                 )
                 existente = cursor.fetchone()
                 if existente is None:
                     raise
-                valores_iguais = all(
-                    (old is None and new is None) or
-                    (old is not None and new is not None and math.isclose(float(old), new, rel_tol=1e-6, abs_tol=1e-6))
-                    for old, new in zip(existente[1:5], (ph, turbidez, temperatura, tds))
-                )
-                if not valores_iguais or existente[5].strftime("%Y-%m-%d %H:%M:%S") != data_hora or existente[6] != turbidez_unidade or existente[7] != tds_status:
+                diferencas = {}
+                for campo, armazenado, recebido in zip(
+                    ("ph", "turbidez", "temperatura", "tds"),
+                    existente[1:5], (ph, turbidez, temperatura, tds),
+                ):
+                    iguais = (armazenado is None and recebido is None) or (
+                        armazenado is not None and recebido is not None and
+                        math.isclose(float(armazenado), recebido, rel_tol=1e-6, abs_tol=1e-6)
+                    )
+                    if not iguais:
+                        diferencas[campo] = {
+                            "armazenado": float(armazenado) if armazenado is not None else None,
+                            "recebido": recebido,
+                        }
+                for campo, armazenado, recebido in (
+                    ("data_hora", existente[5].strftime("%Y-%m-%d %H:%M:%S"), data_hora),
+                    ("turbidez_unidade", existente[6], turbidez_unidade),
+                    ("tds_status", existente[7], tds_status),
+                ):
+                    if armazenado != recebido:
+                        diferencas[campo] = {"armazenado": armazenado, "recebido": recebido}
+                # Novas leituras comparam o conteúdo original; as antigas ainda
+                # usam valores numéricos com tolerância à precisão de FLOAT.
+                hash_armazenado = existente[8]
+                if isinstance(hash_armazenado, (bytes, bytearray)):
+                    hash_armazenado = hash_armazenado.decode("ascii")
+                conflito = hash_armazenado != conteudo_hash if hash_armazenado else bool(diferencas)
+                if conflito:
+                    if not diferencas:
+                        diferencas["conteudo_original"] = {
+                            "armazenado": hash_armazenado, "recebido": conteudo_hash,
+                        }
+                    for campo, valores in diferencas.items():
+                        app.logger.warning(
+                            "Conflito de leitura equipamento=%s UUID=%s campo=%s armazenado=%r recebido=%r",
+                            dados["equipamento_id"], medicao_id, campo,
+                            valores["armazenado"], valores["recebido"],
+                        )
                     cursor.close()
-                    return jsonify({"status": "erro", "message": "leitura_id já utilizado com outros dados"}), 409
+                    return jsonify({
+                        "status": "erro",
+                        "message": "leitura_id já utilizado com outros dados",
+                        "campos_divergentes": list(diferencas),
+                        "diferencas": diferencas,
+                    }), 409
                 registro_id = existente[0]
                 duplicada = True
             cursor.close()
