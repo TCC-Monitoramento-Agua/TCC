@@ -20,7 +20,7 @@ constexpr float REFERENCIA_PH7 = 7.0f;
 constexpr float REFERENCIA_PH4 = 4.0f;
 
 // Referências medidas no GPIO, após o divisor; escala demonstrativa.
-constexpr double TURBIDEZ_AGUA_LIMPA_V = 1.970;
+constexpr double TURBIDEZ_AGUA_LIMPA_V = 1.57;
 constexpr double TURBIDEZ_REFERENCIA_ESCURA_V = 0.07;
 constexpr double TURBIDEZ_MAXIMA_DEMO = 1000.0;
 
