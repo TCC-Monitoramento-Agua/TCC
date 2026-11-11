@@ -34,11 +34,11 @@ O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a c
 
 ## Turbidez: escala de demonstração com unidade exibida NTU
 
-A aquisição no GPIO32 utiliza medianas de 31 amostras de ADC bruto e `analogReadMilliVolts`, com 10 ms entre pares. As chamadas são conversões distintas. A tensão em volts é obtida dividindo os milivolts por 1.000, sem usar uma escala nominal de 2,7 V ou 3,3 V. Os pontos de referência foram medidos após o divisor: água limpa com 1,970 V e café com 0,07 V. A atribuição de 0 e 1.000 a esses pontos define uma escala demonstrativa, sem calibração com padrões NTU.
+A aquisição no GPIO32 utiliza medianas de 31 amostras de ADC bruto e `analogReadMilliVolts`, com 10 ms entre pares. As chamadas são conversões distintas. A tensão em volts é obtida dividindo os milivolts por 1.000, sem usar uma escala nominal de 2,7 V ou 3,3 V. Os pontos de referência foram medidos após o divisor: água limpa com 1,570 V e café com 0,07 V. A atribuição de 0 e 1.000 a esses pontos define uma escala demonstrativa, sem calibração com padrões NTU.
 
 ```text
 V = milivolts_GPIO / 1000
-valor demonstrativo = min(1000, max(0, 1000 × (1,970 − V) / (1,970 − 0,07)))
+valor demonstrativo = min(1000, max(0, 1000 × (1,570 − V) / (1,570 − 0,07)))
 ```
 
 A leitura começa com atenuação de 11 dB; abaixo de 800 mV ou com ADC zero, repete a aquisição em 0 dB apenas no GPIO32. Após a mudança, aguarda estabilização e descarta as primeiras conversões. A faixa de 0 dB melhora a aquisição de sinais baixos, mas não garante que 70 mV estejam na faixa útil do ADC do ESP32 utilizado. Se o ADC continuar em zero, o firmware registra tensão não confirmada e usa 1.000 somente como máximo demonstrativo; sinal ausente ou obstrução também podem causar essa condição. O diagnóstico mostra a tensão como indisponível nesse caso, sem substituir por 0,07 V. ADC 4095 ou resultado não finito permanece indisponível. pH e TDS conservam suas próprias configurações de aquisição.
