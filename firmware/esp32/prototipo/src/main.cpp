@@ -120,6 +120,23 @@ uint16_t lerMedianaAdc(uint8_t pino) {
   return amostras[NUM_AMOSTRAS_FISICAS / 2];
 }
 
+void lerMedianasAdcMilivolts(uint8_t pino, uint16_t& adc, uint32_t& mv) {
+  uint16_t brutas[NUM_AMOSTRAS_FISICAS];
+  uint32_t milivolts[NUM_AMOSTRAS_FISICAS];
+  delay(2);
+  analogRead(pino); // Descarta a primeira conversão após mudar a faixa.
+  analogReadMilliVolts(pino);
+  for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
+    brutas[i] = analogRead(pino);
+    milivolts[i] = analogReadMilliVolts(pino);
+    if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
+  }
+  std::sort(brutas, brutas + NUM_AMOSTRAS_FISICAS);
+  std::sort(milivolts, milivolts + NUM_AMOSTRAS_FISICAS);
+  adc = brutas[NUM_AMOSTRAS_FISICAS / 2];
+  mv = milivolts[NUM_AMOSTRAS_FISICAS / 2];
+}
+
 float lerPhCalibrado() {
   const uint16_t adc = lerMedianaAdc(PH_PIN);
   ultimoAdcPh = adc;
@@ -137,28 +154,12 @@ float lerPhCalibrado() {
 float lerTurbidezCurva() {
   uint16_t adc = 0;
   uint32_t mv = 0;
-  const auto amostrar = [&]() {
-    uint16_t brutas[NUM_AMOSTRAS_FISICAS];
-    uint32_t milivolts[NUM_AMOSTRAS_FISICAS];
-    delay(2);
-    analogRead(TURBIDEZ_FISICA_PIN); // Descarta a primeira conversão após mudar a faixa.
-    analogReadMilliVolts(TURBIDEZ_FISICA_PIN);
-    for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
-      brutas[i] = analogRead(TURBIDEZ_FISICA_PIN);
-      milivolts[i] = analogReadMilliVolts(TURBIDEZ_FISICA_PIN);
-      if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
-    }
-    std::sort(brutas, brutas + NUM_AMOSTRAS_FISICAS);
-    std::sort(milivolts, milivolts + NUM_AMOSTRAS_FISICAS);
-    adc = brutas[NUM_AMOSTRAS_FISICAS / 2];
-    mv = milivolts[NUM_AMOSTRAS_FISICAS / 2];
-  };
   analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
-  amostrar();
+  lerMedianasAdcMilivolts(TURBIDEZ_FISICA_PIN, adc, mv);
   const bool faixaBaixa = adc == 0 || mv < 800;
   if (faixaBaixa) {
     analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_0db);
-    amostrar();
+    lerMedianasAdcMilivolts(TURBIDEZ_FISICA_PIN, adc, mv);
   }
   ultimoAdcTurbidez = adc;
   ultimaTensaoTurbidez = adc == 0 || adc == 4095 ? NAN : mv / 1000.0f;
@@ -192,35 +193,40 @@ float lerTemperatura() {
 }
 
 float lerTds(float temperatura) {
-  uint16_t amostrasAdc[NUM_AMOSTRAS_FISICAS];
-  uint32_t amostrasMv[NUM_AMOSTRAS_FISICAS];
-  for (size_t i = 0; i < NUM_AMOSTRAS_FISICAS; ++i) {
-    amostrasAdc[i] = analogRead(TDS_FISICO_PIN);
-    amostrasMv[i] = analogReadMilliVolts(TDS_FISICO_PIN);
-    if (i + 1 < NUM_AMOSTRAS_FISICAS) delay(INTERVALO_AMOSTRAS_FISICAS_MS);
+  uint16_t adc = 0;
+  uint32_t mv = 0;
+  uint8_t atenuacaoDb = 0;
+  // Começa pela faixa mais sensível e amplia somente se o sinal ficar alto.
+  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_0db);
+  lerMedianasAdcMilivolts(TDS_FISICO_PIN, adc, mv);
+  if (adc >= 3900 || mv >= 850) {
+    atenuacaoDb = 6;
+    analogSetPinAttenuation(TDS_FISICO_PIN, ADC_6db);
+    lerMedianasAdcMilivolts(TDS_FISICO_PIN, adc, mv);
+    if (adc >= 3900 || mv >= 1600) {
+      atenuacaoDb = 11;
+      analogSetPinAttenuation(TDS_FISICO_PIN, ADC_11db);
+      lerMedianasAdcMilivolts(TDS_FISICO_PIN, adc, mv);
+    }
   }
-  std::sort(amostrasAdc, amostrasAdc + NUM_AMOSTRAS_FISICAS);
-  std::sort(amostrasMv, amostrasMv + NUM_AMOSTRAS_FISICAS);
-  const uint16_t adc = amostrasAdc[NUM_AMOSTRAS_FISICAS / 2];
-  const uint32_t mv = amostrasMv[NUM_AMOSTRAS_FISICAS / 2];
   ultimoAdcTds = adc;
   ultimosMvTds = mv;
   if (adc == 0 || adc == 4095) {
-    Serial.printf("[TDS] GPIO=%u | ADC=%u | %s; mV fora da faixa não confirmam tensão; banco=%s | exibição=%s\r\n",
-        TDS_FISICO_PIN, adc, adc == 0 ? "sinal ausente ou abaixo da faixa do ADC" : "entrada saturada",
-        adc == 0 ? "50 (referência visual)" : "null",
-        adc == 0 ? "< 50 ppm (faixa visual)" : "indisponível");
+    Serial.printf("[TDS] GPIO=%u | ADC=%u | faixa=%u dB | %s; tensão não confirmada; banco=%s; tela=%s\r\n",
+        TDS_FISICO_PIN, adc, static_cast<unsigned>(atenuacaoDb), adc == 0 ? "sinal baixo" : "saturação",
+        adc == 0 ? "50" : "null",
+        adc == 0 ? "< 50 ppm (visual)" : "indisponível");
     return NAN;
   }
   const float voltsModulo = tensaoModuloTds(mv);
   const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
-  Serial.printf("[TDS] GPIO=%u | ADC=%u | GPIO=%lu mV | módulo estimado=%.3f V (divisor 10k/15k) | temperatura=%.2f C\r\n",
-      TDS_FISICO_PIN, adc, static_cast<unsigned long>(mv), voltsModulo, temperatura);
+  Serial.printf("[TDS] GPIO=%u | ADC=%u | faixa=%u dB | GPIO=%lu mV | módulo=%.3f V | T=%.2f C\r\n",
+      TDS_FISICO_PIN, adc, static_cast<unsigned>(atenuacaoDb), static_cast<unsigned long>(mv), voltsModulo, temperatura);
   if (mv == 0 || !std::isfinite(ppm)) {
-    Serial.println("[TDS] Indisponível: confira sinal, divisor e temperatura; enviado null, sem bloquear os demais sensores");
+    Serial.println("[TDS] Inválido; tds=null");
     return NAN;
   }
-  Serial.printf("[TDS] Estimativa=%.1f ppm | sem calibração com padrão TDS\r\n", ppm);
+  Serial.printf("[TDS] Estimativa=%.1f ppm (sem calibração)\r\n", ppm);
   return ppm;
 }
 
@@ -317,7 +323,7 @@ void setup() {
   analogReadResolution(12);
   analogSetPinAttenuation(PH_PIN, ADC_11db);
   analogSetPinAttenuation(TURBIDEZ_FISICA_PIN, ADC_11db);
-  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_11db);
+  analogSetPinAttenuation(TDS_FISICO_PIN, ADC_0db);
   sensorTemperatura.begin();
   sensorTemperatura.setResolution(12);
   sensorTemperatura.setWaitForConversion(true);
