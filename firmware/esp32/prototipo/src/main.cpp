@@ -220,7 +220,7 @@ float lerTds(float temperatura) {
   }
   const float voltsModulo = tensaoModuloTds(mv);
   const float ppm = estimarTdsCompensado(voltsModulo, temperatura);
-  Serial.printf("[TDS] GPIO=%u | ADC=%u | faixa=%u dB | GPIO=%lu mV | módulo=%.3f V | T=%.2f C\r\n",
+  Serial.printf("[TDS] GPIO=%u | ADC=%u | faixa=%u dB | GPIO=%lu mV | direto=%.3f V | T=%.2f C\r\n",
       TDS_FISICO_PIN, adc, static_cast<unsigned>(atenuacaoDb), static_cast<unsigned long>(mv), voltsModulo, temperatura);
   if (mv == 0 || !std::isfinite(ppm)) {
     Serial.println("[TDS] Inválido; tds=null");

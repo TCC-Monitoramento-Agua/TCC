@@ -3,13 +3,11 @@
 #include <cmath>
 #include <limits>
 
-// R1: saída do módulo -> GPIO; R2: GPIO -> GND.
-constexpr float TDS_R1_OHMS = 10000.0f;
-constexpr float TDS_R2_OHMS = 15000.0f;
 constexpr float TDS_TEMPERATURA_REFERENCIA_C = 25.0f;
 
+// Saída do módulo ligada diretamente ao GPIO35, sem divisor resistivo.
 inline float tensaoModuloTds(uint32_t milivoltsAdc) {
-  return milivoltsAdc / 1000.0f * (TDS_R1_OHMS + TDS_R2_OHMS) / TDS_R2_OHMS;
+  return milivoltsAdc / 1000.0f;
 }
 
 // Estimativa de referência da biblioteca DFRobot/GravityTDS, K=1 e fator TDS=0,5.
