@@ -16,7 +16,7 @@ const payload = {
     perdidos: false,
     estado: {
         ph: 7, temperatura: 22.5, turbidez: 2.5, tds: 217.0, tds_adc: 235, tds_mv: 331,
-        ph_adc: 1948, turbidez_adc: 2641, ph_volts: 1.57, turbidez_volts: 2.128,
+        turbidez_ref_adc: 2994, turbidez_ref_v: 0.780, ph_adc: 1948, turbidez_adc: 2641, ph_volts: 1.57, turbidez_volts: 2.128,
         leu: true, leitura_ms: 10000, medicao_valida: true,
         pendentes: 3, capacidade: 1000, fila_saudavel: true, horario: true,
         http: 400, enviando: false, confirmou: false
@@ -32,7 +32,7 @@ vm.runInContext(script.slice(0, script.lastIndexOf("atualizar();")), contexto);
 contexto.renderizar(payload);
 assert.equal(document.getElementById("ph").textContent, "7.00");
 assert.equal(document.getElementById("turbidez").textContent, "2.5 NTU");
-assert(document.getElementById("turbidezInfo").textContent.includes("Referência: 1.591 V"));
+assert(document.getElementById("turbidezInfo").textContent.includes("0 NTU: ADC 2994 · 0.780 V"));
 assert.equal(document.getElementById("tds").textContent, "217.0 ppm");
 assert(document.getElementById("tdsInfo").textContent.includes("331 mV"));
 assert(document.getElementById("tdsInfo").textContent.includes("ADC 235"));

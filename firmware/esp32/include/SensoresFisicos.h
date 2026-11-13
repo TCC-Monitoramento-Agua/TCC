@@ -19,18 +19,19 @@ constexpr float TENSAO_PH4 = 1.95f;
 constexpr float REFERENCIA_PH7 = 7.0f;
 constexpr float REFERENCIA_PH4 = 4.0f;
 
-// Referências medidas no GPIO, após o divisor; escala demonstrativa.
-constexpr double TURBIDEZ_AGUA_LIMPA_V = 1.57;
-constexpr double TURBIDEZ_REFERENCIA_ESCURA_V = 0.07;
-constexpr double TURBIDEZ_MAXIMA_DEMO = 1000.0;
+// O ponto zero é registrado na primeira aquisição válida de cada inicialização.
+// O extremo escuro continua sendo uma convenção demonstrativa.
+constexpr float TURBIDEZ_REFERENCIA_ESCURA_V = 0.07f;
+constexpr float TURBIDEZ_MAXIMA_DEMO = 1000.0f;
 
-inline double calcularTurbidezCurva(double volts) {
-  if (!std::isfinite(volts) || volts < 0.0) {
-    return std::numeric_limits<double>::quiet_NaN();
+inline float calcularTurbidezCurva(float volts, float referenciaV) {
+  if (!std::isfinite(volts) || volts < 0.0f || !std::isfinite(referenciaV) ||
+      referenciaV <= TURBIDEZ_REFERENCIA_ESCURA_V) {
+    return std::numeric_limits<float>::quiet_NaN();
   }
-  const double valor = TURBIDEZ_MAXIMA_DEMO * (TURBIDEZ_AGUA_LIMPA_V - volts) /
-      (TURBIDEZ_AGUA_LIMPA_V - TURBIDEZ_REFERENCIA_ESCURA_V);
-  if (valor < 0.0) return 0.0;
+  const float valor = TURBIDEZ_MAXIMA_DEMO * (referenciaV - volts) /
+      (referenciaV - TURBIDEZ_REFERENCIA_ESCURA_V);
+  if (valor < 0.0f) return 0.0f;
   return valor > TURBIDEZ_MAXIMA_DEMO ? TURBIDEZ_MAXIMA_DEMO : valor;
 }
 
