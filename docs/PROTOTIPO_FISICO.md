@@ -9,21 +9,20 @@ O protótipo utiliza sensores de pH, temperatura, turbidez e TDS. O TDS está co
 | PH-4502C | 34 | Saída analógica pelo divisor já utilizado na calibração. |
 | Turbidez | **32** | Pinagem do firmware físico; o esquemático anterior indica GPIO35. |
 | DS18B20 | 14 | Alimentação 3,3 V; pull-up de 4,7 kΩ entre DATA e 3,3 V. |
-| TDS | **35** | Saída analógica pelo divisor 10k/15k; ppm estimado, sem calibração com padrão. |
+| TDS | **35** | Saída analógica direta ao GPIO35, sem divisor; ppm estimado, sem calibração com padrão. |
 
-Os módulos analógicos continuam alimentados em 5 V, com GND comum e os divisores existentes. Não ligar diretamente saídas de 5 V ao GPIO. No firmware físico, pH e TDS usam entradas distintas: GPIO34 e GPIO35, respectivamente.
+Os módulos analógicos continuam alimentados em 5 V, com GND comum. pH e turbidez mantêm seus divisores; o TDS utiliza ligação direta ao GPIO35. Não ligar diretamente saídas de 5 V ao GPIO. No firmware físico, pH e TDS usam entradas distintas: GPIO34 e GPIO35, respectivamente.
 
-## pH: conversão e ajuste
+## pH: conversão
 
 Os pontos de calibração registrados são **1,57 V para pH 7** e **1,95 V para pH 4**. São valores calculados no código de calibração por `ADC / 4095 × 3,3`, após o divisor, não a tensão reconstruída na saída do módulo. Para manter a calibração coerente, a implementação usa a mesma escala e não multiplica novamente pelo fator 1,6667.
 
 ```text
 V = ADC × 3,3 / 4095
-pH_original = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
-pH_final = pH_original − 3
+pH = 7 + (V − 1,57) × (4 − 7) / (1,95 − 1,57)
 ```
 
-Após a conversão pelos pontos de calibração, aplica-se um deslocamento de **−3,0** ao resultado. Fica em `AJUSTE_FINAL_PH`, em `SensoresFisicos.h`, e é aplicado antes dos cartões, do armazenamento e do envio: 9,8 → 6,8. O log preserva o valor original, o ajuste e o resultado. Não é uma nova calibração experimental nem uma solução para interferência elétrica. Também desloca os pontos originais (pH 7 → 4, pH 4 → 1), exigindo conferência com referências antes de declarar exatidão. Resultado ajustado fora de 0–14 ou não finito permanece inválido, sem limitar artificialmente a 0. O histórico não é recalculado.
+O resultado dos pontos de calibração é utilizado diretamente no diagnóstico, no armazenamento e no envio, sem deslocamento adicional de −3. As interferências observadas com outras sondas no mesmo recipiente permanecem uma limitação a ser investigada; sua causa não foi confirmada e não é corrigida por um ajuste constante de pH. Valores não finitos ou fora de 0–14 permanecem inválidos. Os registros históricos não são recalculados.
 
 A referência adotada no firmware para a solução ácida é **pH 4,00**. Se o valor atribuído à solução for de fato 4,01, ajustar `REFERENCIA_PH4` em `firmware/esp32/include/SensoresFisicos.h`. Os coeficientes se referem à mesma atenuação, divisor, ADC e ajuste físico do módulo; não transportá-los para outra escala de leitura sem nova conferência.
 
@@ -35,29 +34,33 @@ O firmware utiliza OneWire/DallasTemperature, inicializa o DS18B20 e aguarda a c
 
 ## Turbidez: escala de demonstração com unidade exibida NTU
 
-A referência adotada para a demonstração é **1,591 V**, expressa na escala nominal `ADC × 3,3/4095` utilizada no log físico, após o divisor. Esse ponto recebeu o valor **2,5** por convenção de demonstração; não foi medido com padrão óptico nem turbidímetro de referência. O ganho foi definido arbitrariamente como **50 unidades por volt**:
+A aquisição no GPIO32 utiliza medianas de 31 amostras de ADC bruto e `analogReadMilliVolts`, com 10 ms entre pares. As chamadas são conversões distintas. A primeira medição válida de cada inicialização registra o par ADC e tensão como referência de 0 da escala demonstrativa. A referência permanece fixa nas coletas posteriores, mesmo com mudanças na amostra. Não é salva na flash: reiniciar o ESP32 inicia uma nova referência. É necessário ligar o equipamento com a sonda imóvel, submersa na água escolhida como referência e com iluminação controlada.
 
 ```text
-valor demonstrativo = max(0, 2,5 + (Vgpio − 1,591) × 50)
+V = milivolts_GPIO / 1000
+Vzero = tensão registrada na primeira aquisição válida
+valor demonstrativo = min(1000, max(0, 1000 × (Vzero − V) / (Vzero − 0,07)))
 ```
 
-A faixa demonstrativa de 0 a 5 corresponde aproximadamente a 1,541–1,641 V. Sinal acima de 1,641 V ultrapassa 5; sinal abaixo de 1,541 V é limitado a 0. Nos ensaios com papel e sal, observou-se aumento da tensão; a escala adotada associa esse aumento a valores demonstrativos maiores. A relação continua sendo uma convenção de demonstração: a aparência ou o uso da água para consumo não comprova seu valor em NTU. O ganho de 50 unidades/V não foi validado com padrões ópticos. Os parâmetros ficam em `SensoresFisicos.h`. Mediana de 31 amostras/10 ms e rejeição de ADC 0/4095 permanecem. A referência mostrada no diagnóstico acompanha o parâmetro enviado pelo firmware, sem texto fixo desatualizado.
+São rejeitadas como referência as leituras com ADC 0/4095 ou tensão igual ou inferior a 0,07 V. Enquanto não houver referência válida, a turbidez fica indisponível e a captura é tentada na próxima coleta. Após a referência, ADC zero mantém a convenção de máximo demonstrativo, com tensão não confirmada; isso não comprova 1.000 NTU reais e também pode indicar sinal ausente. A primeira aquisição já retorna zero e segue para a API quando os demais sensores permitem criar uma medição completa. A página local mostra separadamente os ADCs e tensões atuais e de referência. O SCADA e o banco recebem o resultado calculado, com unidade `ntu_demonstrativo`; não recebem os campos locais da referência nem alteram o histórico.
+
+A leitura começa com atenuação de 11 dB; abaixo de 800 mV ou com ADC zero, repete em 0 dB no GPIO32. Cada faixa aguarda estabilização e descarta as primeiras conversões. Valores brutos de ADC em atenuações diferentes não são diretamente comparáveis; o cálculo utiliza volts. A faixa de 0 dB não garante medição de 70 mV. pH e TDS conservam suas próprias configurações. A zeragem ajusta a origem da escala: não estabiliza oscilações, não elimina interferência luminosa e não calibra o sensor com padrões NTU. Alterar recipiente, posição ou iluminação requer reiniciar na amostra de referência; reiniciar em água já modificada atribuirá zero a essa nova amostra.
 
 O cartão local e o SCADA mostram **NTU**, com indicação de **escala de demonstração** na descrição. O log e o histórico identificam os dados demonstrativos. O campo de entrada é `turbidez_demonstrativa`; a API o armazena em `turbidez` com unidade **`ntu_demonstrativo`**, sem alterar linhas antigas. Leituras anteriores em `percentual_relativo` continuam percentuais; as de `ntu` continuam com a unidade original. A confirmação de envio precisa corresponder à unidade do payload antes de liberar a fila.
 
-A faixa de 0–5 faz parte da convenção demonstrativa. O código atual do SCADA dispara o alerta de turbidez acima de 50; esse limite difere da faixa de demonstração. A identificação da escala demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois o ganho adotado não constitui calibração física.
+A escala demonstrativa é limitada à faixa de 0–1.000. O código atual do SCADA dispara o alerta de turbidez acima de 50. A identificação demonstrativa deve acompanhar os resultados em relatórios e apresentações, pois a equação não comprova calibração física do conjunto utilizado.
 
 **Publicar API e SCADA atualizados antes de gravar o firmware:** uma API antiga rejeita o campo novo com HTTP 400, preservando o registro na fila, em vez de armazenar a convenção como medição em NTU. Não apagar a fila nem reescrever medições antigas. Esse procedimento não resolve os conflitos HTTP 409 que já existiam.
 
 ## TDS: tensão e estimativa com temperatura medida
 
-A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolts`, com 10 ms entre pares. Os logs mostram o GPIO35, ADC, milivolts no GPIO (conversão calibrada pelo suporte ADC do ESP32), tensão estimada na saída do módulo e ppm. As duas chamadas ADC são conversões distintas. Essa escala em milivolts é usada somente para TDS; a calibração existente do pH permanece inalterada.
+A leitura utiliza medianas de 31 amostras de ADC bruto e de `analogReadMilliVolts`, com 10 ms entre pares. Os logs mostram o GPIO35, ADC, milivolts no GPIO (conversão calibrada pelo suporte ADC do ESP32), tensão da ligação direta na saída do módulo e ppm. As duas chamadas ADC são conversões distintas. O pH mantém sua escala de calibração; TDS e turbidez usam aquisição em milivolts.
 
-O divisor de 10 kΩ em série e 15 kΩ para GND fornece 60% da tensão original. A reconstrução multiplica a tensão do GPIO por 25/15. Assim, **300 mV na saída do módulo devem produzir aproximadamente 180 mV no GPIO**, e 500–600 mV devem produzir 300–360 mV. Medir no conector de entrada da PCB não confirma a tensão após os resistores; conferir também diretamente no GPIO35, sempre contra GND comum. A reconstrução pressupõe que esse divisor está realmente instalado.
+O divisor do TDS foi removido para evitar a redução dos sinais baixos. A tensão medida no GPIO35 é a própria tensão de saída do módulo: `Vmodulo = milivolts_GPIO / 1000`. Assim, 220 mV são usados como 0,220 V no cálculo, sem multiplicar por 25/15. A ligação requer GND comum e saída compatível com os limites elétricos do ESP32; alimentar o módulo em 5 V não torna o GPIO tolerante a 5 V. A compensação de temperatura e o polinômio permanecem iguais.
 
 A conversão usa a curva de referência DFRobot/GravityTDS, fator 0,5 e compensação `V25 = Vmodulo / (1 + 0,02 × (temperatura − 25))` com temperatura real do DS18B20. O resultado é uma **estimativa não calibrada**, não garantia da concentração real nem de potabilidade. Para leitura válida, o firmware envia a estimativa e `tds_status=medido`. Tensão acima de 2,3 V, estimativa fora de 0–1000 ppm, temperatura inválida ou saturação permanecem indisponíveis. A condição específica de ADC zero é representada pela convenção descrita a seguir. O diagnóstico local mostra ppm, ADC e tensão do GPIO35, inclusive quando outro sensor impede gerar uma medição completa.
 
-Quando o ADC bruto é 0 ou 4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra “fora da faixa” no lugar dos mV nessas condições: valores calculados como 142 mV com ADC zero podem ser o piso da conversão, não tensão efetivamente confirmada. O cálculo não foi alterado para produzir concentrações mínimas artificiais; a convenção de apresentação para ADC zero é descrita a seguir. A entrada de TDS utiliza atenuação de 11 dB e mantém o divisor resistivo. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
+Quando o ADC bruto é 0 ou 4095, o firmware sinaliza ausência de sinal/faixa inferior ou saturação antes de converter em ppm. A página mostra “fora da faixa” no lugar dos mV nessas condições: valores calculados como 142 mV com ADC zero podem ser o piso da conversão, não tensão efetivamente confirmada. O cálculo não foi alterado para produzir concentrações mínimas artificiais; a convenção de apresentação para ADC zero é descrita a seguir. A entrada de TDS começa em 0 dB a cada coleta, com ligação direta e sem divisor resistivo. Se a mediana do ADC chegar a 3900 ou a tensão a 850 mV, repete a aquisição em 6 dB. Se nessa faixa o ADC chegar a 3900 ou a tensão a 1600 mV, repete em 11 dB. Cada aquisição aguarda 2 ms e descarta as primeiras conversões após configurar a atenuação. O log informa a faixa efetivamente utilizada. A faixa de 0 dB é mais sensível, mas não garante precisão para sinais de 61–86 mV, que podem continuar abaixo da faixa útil do ESP32. ADC zero continua sendo sinalizado como não confirmado; não é convertido em uma tensão fictícia. As configurações do pH e da turbidez não são alteradas por essa seleção do GPIO35. Detectar sinal inferior à faixa útil depende da aquisição e do circuito, não de elevar arbitrariamente a concentração.
 
 Uma aquisição com **ADC zero** apresenta **`< 50 ppm`** no diagnóstico local e nos logs. Nas novas medições completas, o ESP32 envia **`tds=50` e `tds_status=abaixo_50_visual`**. O número 50 é uma referência de apresentação, não uma concentração medida nem limite de detecção comprovado. A descrição local e o tooltip no SCADA registram essa distinção.
 

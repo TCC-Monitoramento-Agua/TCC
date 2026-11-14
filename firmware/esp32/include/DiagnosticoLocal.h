@@ -9,9 +9,11 @@
 
 struct EstadoDiagnostico {
   float ph = NAN, temperatura = NAN, turbidez = NAN, tds = NAN;
-  uint16_t phAdc = 0, turbidezAdc = 0, referencia = 0, tdsAdc = 0;
+  uint16_t phAdc = 0, turbidezAdc = 0, tdsAdc = 0;
   uint32_t tdsMv = 0;
   float phVolts = NAN, turbidezVolts = NAN;
+  uint16_t turbidezReferenciaAdc = 0;
+  float turbidezReferenciaV = NAN;
   uint32_t leituraMs = 0, envioMs = 0;
   uint16_t pendentes = 0, capacidade = 0;
   int http = 0;
@@ -38,14 +40,17 @@ class ConsoleDiagnostico : public Print {
     return enviados;
   }
   void leitura(float ph, float temperatura, float turbidez, uint16_t phAdc,
-               uint16_t turbidezAdc, float phVolts, float turbidezVolts, uint16_t referencia,
-               float tds, uint16_t tdsAdc, uint32_t tdsMv) {
+               uint16_t turbidezAdc, float phVolts, float turbidezVolts,
+               float tds, uint16_t tdsAdc, uint32_t tdsMv,
+               uint16_t turbidezReferenciaAdc, float turbidezReferenciaV) {
     portENTER_CRITICAL(&mutex);
     estado.ph = ph; estado.temperatura = temperatura; estado.turbidez = turbidez;
     estado.phAdc = phAdc; estado.turbidezAdc = turbidezAdc;
     estado.phVolts = phVolts; estado.turbidezVolts = turbidezVolts;
     estado.tds = tds; estado.tdsAdc = tdsAdc; estado.tdsMv = tdsMv;
-    estado.referencia = referencia; estado.leituraMs = millis(); estado.leu = true;
+    estado.turbidezReferenciaAdc = turbidezReferenciaAdc;
+    estado.turbidezReferenciaV = turbidezReferenciaV;
+    estado.leituraMs = millis(); estado.leu = true;
     estado.medicaoValida = std::isfinite(ph) && std::isfinite(temperatura) && std::isfinite(turbidez);
     portEXIT_CRITICAL(&mutex);
   }
@@ -106,7 +111,9 @@ class DiagnosticoLocal {
     e["turbidez_unidade"] = "ntu_demonstrativo";
     e["tds"] = estado.tds; e["tds_adc"] = estado.tdsAdc; e["tds_mv"] = estado.tdsMv;
     e["ph_adc"] = estado.phAdc; e["turbidez_adc"] = estado.turbidezAdc;
-    e["ph_volts"] = estado.phVolts; e["turbidez_volts"] = estado.turbidezVolts; e["referencia"] = estado.referencia;
+    e["ph_volts"] = estado.phVolts; e["turbidez_volts"] = estado.turbidezVolts;
+    e["turbidez_ref_adc"] = estado.turbidezReferenciaAdc;
+    e["turbidez_ref_v"] = estado.turbidezReferenciaV;
     e["leu"] = estado.leu; e["leitura_ms"] = estado.leituraMs; e["medicao_valida"] = estado.medicaoValida;
     e["pendentes"] = estado.pendentes; e["capacidade"] = estado.capacidade;
     e["fila_saudavel"] = estado.filaSaudavel; e["horario"] = estado.horario;

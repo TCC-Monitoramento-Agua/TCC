@@ -11,27 +11,16 @@ int main() {
   assert(std::isnan(converterPh(NAN)));
   assert(std::isnan(converterPh(0.0f)));
   assert(std::isnan(converterPh(3.3f)));
-  assert(std::abs(ajustarPhFinal(9.8f) - 6.8f) < 0.001f);
-  assert(std::abs(ajustarPhFinal(9.81f) - 6.81f) < 0.001f);
-  assert(ajustarPhFinal(3.0f) == 0.0f);
-  assert(ajustarPhFinal(14.0f) == 11.0f);
-  assert(std::isnan(ajustarPhFinal(2.9f))); // Não inventar zero para resultado negativo.
-  assert(std::isnan(ajustarPhFinal(NAN)));
-  // Percentual de queda do sinal, sem relação arbitrária com NTU.
-  assert(turbidezRelativa(2709) == 0.0f);
-  assert(turbidezRelativa(3000) == 0.0f);
-  assert(turbidezRelativa(1000, 2000) == 50.0f);
-  assert(turbidezRelativa(0) == 100.0f);
-  assert(std::isnan(turbidezRelativa(1000, 0)));
-  // Escala arbitrária de demonstração, não equivalência com padrões NTU.
-  assert(std::abs(turbidezDemonstrativa(1.591f) - 2.5f) < 0.001f);
-  assert(std::abs(turbidezDemonstrativa(1.641f) - 5.0f) < 0.001f);
-  assert(turbidezDemonstrativa(1.541f) < 0.001f);
-  assert(turbidezDemonstrativa(1.7f) > 5.0f);
-  assert(turbidezDemonstrativa(1.1f) == 0.0f);
-  assert(turbidezDemonstrativa(2.0f) > turbidezDemonstrativa(1.7f));
-  assert(std::isnan(turbidezDemonstrativa(NAN)));
-  assert(std::isnan(turbidezDemonstrativa(-0.1f)));
+  // O zero vem da referência da montagem, e não de uma tensão fixa.
+  assert(calcularTurbidezCurva(0.9f, 0.9f) == 0.0f);
+  assert(calcularTurbidezCurva(1.8f, 1.8f) == 0.0f);
+  assert(std::abs(calcularTurbidezCurva(0.485f, 0.9f) - 500.0f) < 0.001f);
+  assert(calcularTurbidezCurva(0.07f, 0.9f) == 1000.0f);
+  assert(calcularTurbidezCurva(0.0f, 0.9f) == 1000.0f);
+  assert(calcularTurbidezCurva(1.0f, 0.9f) == 0.0f);
+  assert(std::isnan(calcularTurbidezCurva(0.5f, NAN)));
+  assert(std::isnan(calcularTurbidezCurva(0.5f, 0.07f)));
+  assert(std::isnan(calcularTurbidezCurva(NAN, 0.9f)));
   assert(temperaturaFisicaValida(22.5f));
   assert(temperaturaFisicaValida(85.0f)); // Pode ser temperatura real após conversão.
   assert(!temperaturaFisicaValida(-127.0f));
