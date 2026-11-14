@@ -1,6 +1,6 @@
 const API_URL = "https://api-monitoramento-agua.onrender.com/leituras?limite=100";
 
-const INTERVALO_ATUALIZACAO = 5000; // 5 segundos após concluir a consulta
+const INTERVALO_ATUALIZACAO = 3000; // 5 segundos após concluir a consulta
 const TEMPO_LIMITE_REQUISICAO = 60000; // Até 60 segundos para receber os dados
 const LIMITE_TABELA_HISTORICO = 15; // Quantidade de registros exibidos no histórico recente
 
