@@ -27,6 +27,15 @@ vm.runInContext(codigo.slice(0, codigo.lastIndexOf('inicializarTema();')), conte
 const base = {ph: 7, temperatura: 25, turbidez: 2.5, turbidez_unidade: 'ntu',
     tds: null, created_at: '2026-11-08T12:00:00-03:00'};
 
+// A média geral deve considerar exatamente as 15 linhas do histórico recente.
+const vinteLeituras = Array.from({length: 20}, (_, indice) => ({
+    ...base, ph: indice + 1, temperatura: indice + 1, turbidez: indice + 1,
+    tds: indice + 1, tds_status: 'medido'
+}));
+const historicoRecente = contexto.obterLeiturasHistorico(vinteLeituras);
+assert.equal(historicoRecente.length, 15);
+assert.equal(contexto.calcularMediaLeituras(historicoRecente).ph, 8);
+
 contexto.atualizarCards(base);
 assert.equal(document.getElementById('valorTds').textContent, '--');
 assert.equal(document.getElementById('valorTurbidez').textContent, '2.5 NTU');
