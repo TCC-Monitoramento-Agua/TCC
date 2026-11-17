@@ -10,7 +10,7 @@ Este guia apresenta a estrutura do projeto e os procedimentos para configurar a 
 |---|---|
 | Wokwi | DS18B20 para temperatura; potenciômetros representam pH, turbidez e TDS. Não reproduz calibração química de sensores reais. |
 | API e banco | Recepção, validação básica, MySQL, identificação do equipamento, UUID por medição e proteção contra duplicação. |
-| SCADA | Cartões da leitura mais recente por horário de medição, histórico de até 15 registros, filtros por equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
+| SCADA | No modo geral, os cartões mostram a média dos mesmos registros exibidos no histórico recente (até 15); com filtro de equipamento, mostram sua leitura mais recente. Inclui filtros por equipamento e alertas com limites provisórios. Sem gráficos temporais nesta versão. |
 | Falhas de envio | Fila LittleFS de 1.000 leituras, reenvio em ordem de coleta e reconexão Wi-Fi. Há limites e testes pendentes descritos abaixo. |
 | Protótipo físico | pH com dois pontos confirmados, DS18B20 real, turbidez em escala demonstrativa (NTU no cartão) e TDS estimado no GPIO35. Conferir pinagem e publicação da API/SCADA em [PROTOTIPO_FISICO.md](docs/PROTOTIPO_FISICO.md). |
 
