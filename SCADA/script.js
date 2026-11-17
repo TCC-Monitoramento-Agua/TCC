@@ -121,6 +121,45 @@ function obterIdsEquipamentosDisponiveis() {
     return ids;
 }
 
+function calcularMediaLeituras(leituras) {
+    if (!leituras || leituras.length === 0) return null;
+
+    let somaPh = 0;
+    let somaTemp = 0;
+    let somaTurb = 0;
+    let qtdTurbValida = 0;
+    let somaTds = 0;
+    let qtdTdsValido = 0;
+
+    leituras.forEach((item) => {
+        if (item.ph != null && !isNaN(item.ph)) {
+            somaPh += item.ph;
+        }
+        if (item.temperatura != null && !isNaN(item.temperatura)) {
+            somaTemp += item.temperatura;
+        }
+        if (item.turbidez != null && !isNaN(item.turbidez) && item.turbidez_unidade !== "percentual_relativo") {
+            somaTurb += item.turbidez;
+            qtdTurbValida++;
+        }
+        if (item.tds != null && !isNaN(item.tds)) {
+            somaTds += item.tds;
+            qtdTdsValido++;
+        }
+    });
+
+    const total = leituras.length;
+    return {
+        ph: total > 0 ? somaPh / total : 0,
+        temperatura: total > 0 ? somaTemp / total : 0,
+        turbidez: qtdTurbValida > 0 ? somaTurb / qtdTurbValida : 0,
+        turbidez_unidade: qtdTurbValida > 0 ? "ntu" : "percentual_relativo",
+        tds: qtdTdsValido > 0 ? somaTds / qtdTdsValido : null,
+        tds_status: qtdTdsValido > 0 ? "medido" : "indisponivel",
+        created_at: leituras[0] ? leituras[0].created_at : new Date().toISOString()
+    };
+}
+
 
 /*
 ====================================================
@@ -195,25 +234,42 @@ function aplicarFiltroTela() {
         return;
     }
 
-    // Leitura mais recente para os cards e painéis
     const leituraMaisRecente = leiturasFiltradas[0];
-    atualizarCards(leituraMaisRecente);
-    verificarAlarmes(leituraMaisRecente);
+    const descTelemetria = document.getElementById("descricaoTelemetria");
 
-    // Atualiza metadados do chip de Equipamento
+    // Quando não tem nenhum filtro de dispositivo (modoTodos), exibe a média geral nos cards.
+    // Quando um dispositivo é selecionado no filtro, exibe o último registro desse filtro.
     if (modoTodos) {
-        const idPrimeiro = leituraMaisRecente.equipamento_id != null ? leituraMaisRecente.equipamento_id : "1";
-        spanEquipamento.textContent = `${idPrimeiro} (Todos)`;
+        const mediaGeral = calcularMediaLeituras(leiturasFiltradas);
+        atualizarCards(mediaGeral);
+        verificarAlarmes(mediaGeral);
+
+        const totalDispositivos = obterIdsEquipamentosDisponiveis().length;
+        spanEquipamento.textContent = "Todos (Média Geral)";
         badgeFiltro.textContent = "Todos ▾";
         chipEquipamento.classList.remove("filtrado");
-        chipEquipamento.title = "Clique para filtrar por equipamento (Exibindo todos os nós)";
+        chipEquipamento.title = "Exibindo média geral de todos os equipamentos. Clique para filtrar por equipamento";
 
-        document.getElementById("statusLeitura").textContent = "Dados atualizados com sucesso.";
+        if (descTelemetria) {
+            descTelemetria.textContent = "Média geral calculada de todos os nós sensores";
+        }
+
+        document.getElementById("statusLeitura").textContent =
+            totalDispositivos > 1
+                ? `Exibindo média geral de ${leiturasFiltradas.length} medições (${totalDispositivos} equipamentos).`
+                : `Exibindo média geral de ${leiturasFiltradas.length} medição(ões).`;
 
         if (descTabela) descTabela.textContent = `Últimas ${LIMITE_TABELA_HISTORICO} medições consolidadas no banco de dados`;
         if (badgeContagem) badgeContagem.textContent = `${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros (Todos)`;
         if (btnLimpar) btnLimpar.classList.add("oculto");
     } else {
+        atualizarCards(leituraMaisRecente);
+        verificarAlarmes(leituraMaisRecente);
+
+        if (descTelemetria) {
+            descTelemetria.textContent = "Registro mais recente capturado pelo nó sensor";
+        }
+
         const textoFormatado = listaSelecionados.join(", ");
         spanEquipamento.textContent = textoFormatado;
         badgeFiltro.textContent = qtdSelecionados === 1 ? `ID: ${listaSelecionados[0]} ▾` : `${qtdSelecionados} SELECIONADOS ▾`;
@@ -221,11 +277,11 @@ function aplicarFiltroTela() {
         chipEquipamento.title = `Filtro ativo: ${textoFormatado}. Clique para alterar`;
 
         if (qtdSelecionados === 1) {
-            document.getElementById("statusLeitura").textContent = `Filtrado por Equipamento ${listaSelecionados[0]} (${leiturasFiltradas.length} medição(ões)).`;
+            document.getElementById("statusLeitura").textContent = `Filtrado por Equipamento ${listaSelecionados[0]} (último registro exibido de ${leiturasFiltradas.length} medição(ões)).`;
             if (descTabela) descTabela.textContent = `Exibindo medições exclusivas do Equipamento ${listaSelecionados[0]}`;
             if (badgeContagem) badgeContagem.textContent = `Equipamento ${listaSelecionados[0]} (${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros)`;
         } else {
-            document.getElementById("statusLeitura").textContent = `Filtrado por ${qtdSelecionados} equipamentos (${leiturasFiltradas.length} medição(ões)).`;
+            document.getElementById("statusLeitura").textContent = `Filtrado por ${qtdSelecionados} equipamentos (último registro exibido de ${leiturasFiltradas.length} medição(ões)).`;
             if (descTabela) descTabela.textContent = `Exibindo medições de ${qtdSelecionados} equipamentos (${textoFormatado})`;
             if (badgeContagem) badgeContagem.textContent = `${qtdSelecionados} Equipamentos (${Math.min(leiturasFiltradas.length, LIMITE_TABELA_HISTORICO)} registros)`;
         }
